@@ -140,6 +140,7 @@ select{width:120px;text-align:left;cursor:pointer;}
     <div class="row"><label>列数</label><input type="number" id="col-count" value="3" min="1" max="8" step="1"></div>
     <div class="row"><label>列間隔 (mm)</label><input type="number" id="col-gap" value="6" min="2" max="40" step="0.5"></div>
     <div class="row"><label>開始位置U (mm)</label><input type="number" id="ans-u" value="38" min="5" max="250" step="0.5"></div>
+    <div id="ans-warning" style="display:none;margin:4px 0;padding:6px 8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);border-radius:3px;font-size:10px;color:#f5a623;line-height:1.5;"></div>
     <div class="divider"></div>
     <div class="qlist" id="qlist"></div>
     <div style="display:flex;gap:4px">
@@ -257,22 +258,33 @@ function getP(){
   const mbShape=document.querySelector('input[name=mbshape]:checked').value;
   const mbS=parseFloat(document.getElementById('mb-s').value); // 短辺
   const mbL=parseFloat(document.getElementById('mb-l').value); // 長辺
-  // TM・MBの長辺方向はシートの長辺方向と「逆」
-  // 縦型(シート長辺=u方向): TM・MB長辺=v方向（横長）→ tmU=tmS, tmV=tmL, mbU=mbS, mbV=mbL
-  // 横型(シート長辺=v方向): TM・MB長辺=u方向（縦長）→ tmU=tmL, tmV=tmS, mbU=mbL, mbV=mbS
-  const isTate=orient==='tate';
+  // TM・MBの寸法（スクリプト解析結果）
+  // TMチェック.jsx: 縦型→size_tate=短辺(a), size_yoko=長辺(b)
+  //                 横型→size_tate=長辺(b), size_yoko=短辺(a)
+  // つまり「縦型=横長TM・MB、横型=縦長TM・MB」
+  //
+  // u軸（センサー通過方向）: 縦型=紙面Y、横型=紙面X
+  // v軸（MB展開方向）: 縦型=紙面X（左→右）、横型=紙面Y（下→上）
+  //
+  // 縦型: TM・MBは横長 → u寸法=短辺、v寸法=長辺
+  // 横型: TM・MBは縦長 → u寸法=長辺、v寸法=短辺（紙面Y逆方向なのでv軸では短辺）
+  // ただし「センサー通過方向のTM寸法」は常に短辺(tmS)
+  // → 縦型・横型とも tmU=tmS, tmV=tmL で統一
+  //   スケールチェック.jsx: 縦型はMB_size_chouhen/tanpenを入れ替える
+  //   → UIで入力するmbS/mbLは「横型を正」として、縦型は入れ替えて適用
+  //   → 結果: 縦型も横型も mbU=mbS（ピッチ方向=短辺）、mbV=mbL（展開方向=長辺）
   return {
     pk, pd, orient, face, mbShape,
     pitch: pd.pitch,
     firstV:pd.firstV,
     maxMB: pd.maxMB,
     tmPos: pd.tmPos,
-    // TM寸法（u/v軸）
-    tmU: isTate ? pd.tmS : pd.tmL,  // 縦型=短辺がu方向、横型=長辺がu方向
-    tmV: isTate ? pd.tmL : pd.tmS,  // 縦型=長辺がv方向、横型=短辺がv方向
-    // MB寸法（u/v軸）
-    mbU: isTate ? mbS : mbL,  // 縦型=短辺がu方向（横長MB）
-    mbV: isTate ? mbL : mbS,  // 縦型=長辺がv方向（横長MB）
+    // TM寸法: u方向=短辺、v方向=長辺（縦型・横型共通）
+    tmU: pd.tmS,
+    tmV: pd.tmL,
+    // MB寸法: u方向=短辺（ピッチ方向）、v方向=長辺（展開方向）（縦型・横型共通）
+    mbU: mbS,
+    mbV: mbL,
     mbS, mbL,
     cols:   parseInt(document.getElementById('col-count').value),
     colGap: parseFloat(document.getElementById('col-gap').value),
@@ -294,16 +306,23 @@ document.querySelectorAll('input[name=pitch]').forEach(r=>r.addEventListener('ch
   document.getElementById('inf-mbmax').textContent=d.maxMB;
   renderPreview();
 }));
-['mb-s','mb-l','col-count','col-gap','ans-u','en-digits','en-u'].forEach(id=>
-  document.getElementById(id).addEventListener('change',renderPreview));
+['mb-s','mb-l','col-count','col-gap','ans-u','en-digits','en-u'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('change', renderPreview);
+  el.addEventListener('input',  renderPreview);
+});
 document.querySelectorAll('input[name=face],input[name=orient],input[name=mbshape],input[name=examno]')
   .forEach(r=>r.addEventListener('change',renderPreview));
 
 // ================================================================
 //  シート・B4サイズ取得（u/v単位）
 // ================================================================
-function getSheetUV(orient){ return orient==='tate'?{uLen:A4_LONG,vLen:A4_SHORT}:{uLen:A4_SHORT,vLen:A4_LONG}; }
-function getB4UV(orient)   { return orient==='tate'?{uLen:B4_LONG,vLen:B4_SHORT}:{uLen:B4_SHORT,vLen:B4_LONG}; }
+// 縦型: u=長辺(297), v=短辺(210)  ← センサーが上から下へ通る
+// 横型: u=短辺(210), v=長辺(297)  ← センサーが左から右へ通る、MBは下→上展開
+// 縦型: u=長辺(297), v=短辺(210) → 紙面 幅210×高297
+// 横型: u=長辺(297), v=短辺(210) → 紙面 幅297×高210（u=X方向、v=Y逆方向）
+function getSheetUV(orient){ return {uLen:A4_LONG, vLen:A4_SHORT}; }
+function getB4UV(orient)   { return {uLen:B4_LONG, vLen:B4_SHORT}; }
 function getOffset(orient){
   const s=getSheetUV(orient),b=getB4UV(orient);
   return {ouU:(b.uLen-s.uLen)/2, ouV:(b.vLen-s.vLen)/2};
@@ -312,13 +331,24 @@ function getOffset(orient){
 // ================================================================
 //  u,v → 描画座標(x,y) 変換
 // ================================================================
-// B4左上を原点とした描画座標
-// 縦型: x=offV+v,  y=offU+u
-// 横型: x=offU+u,  y=offV+(vLen-v)  ←v原点が下端のため
-function uv2xy(u,v,orient,off,vLen){
-  return orient==='tate'
-    ? {x:off.ouV+v, y:off.ouU+u}
-    : {x:off.ouU+u, y:off.ouV+(vLen-v)};
+// 縦型:
+//   u=0が上端, v=0が左端
+//   x = ouV + v,  y = ouU + u
+//
+// 横型（縦型を-90°回転、MBが下→上展開）:
+//   u=0が左端, v=0が下端（v増加方向=上）
+//   x = ouU + u
+//   y = (b4.vLen - ouV) - v  ← B4下端からouV引いた位置がv=0の紙面座標
+//     = ouV_bottom - v
+//   ここで ouV_bottom = b4.vLen - ouV = b4.vLen - (b4.vLen-s.vLen)/2 = (b4.vLen+s.vLen)/2
+function uv2xy(u, v, orient, off, vLen, b4vLen){
+  if(orient==='tate'){
+    return {x: off.ouV + v, y: off.ouU + u};
+  } else {
+    // 横型: v=0 が紙面下端（= b4vLen - ouV）
+    const ouV_bottom = b4vLen - off.ouV;
+    return {x: off.ouU + u, y: ouV_bottom - v};
+  }
 }
 
 // ================================================================
@@ -421,19 +451,56 @@ function calcAnsUmin(p,outer){
   return Math.max(p.ansU, ansPitchAligned);
 }
 
+// ----------------------------------------------------------------
+//  解答欄がA4のu方向・v方向にはみ出すか判定
+//  戻り値: { u: bool, v: bool }
+// ----------------------------------------------------------------
+function checkAnsOverflow(ansU, cols, p, outer){
+  if(questions.length===0) return {u:false, v:false};
+  const perCol = Math.ceil(questions.length / cols);
+
+  // u方向（下端）チェック: 最終行MB終端 > outer.u2
+  const lastMbU = ansU + (perCol-1)*p.pitch;
+  const overU   = (lastMbU + p.mbU + BOX_PAD_U) > outer.u2;
+
+  // v方向（右端/左端）チェック: 最大選択肢数のMBが outer.v2 を超えるか
+  // 各列の最大選択肢数
+  const maxChoices = Math.max(...questions.map(q=>q.choices));
+  const availV     = outer.vLen - p.firstV;
+  const colVLen    = (availV - p.colGap*(cols-1)) / cols;
+  // 1列に必要なv幅: maxChoices*pitch（pitchはMB間隔）
+  const neededV = maxChoices * p.pitch - p.pitch + p.mbV + BOX_PAD_V*2 + QNUM_COL_W;
+  const overV   = neededV > colVLen;
+
+  return {u: overU, v: overV};
+}
+
 // 解答欄レイアウト
 function calcAns(p,outer){
   // TM座標確認: ansU が TM間隔制約を満たすよう補正
   const ansUcorrected = calcAnsUmin(p,outer);
-  const ansUdiff = ansUcorrected - p.ansU;
-  if(ansUdiff>0.01){
-    // UIのステータスに警告を反映（drawAll完了後に呼ばれるためフラグで管理）
+  if(ansUcorrected - p.ansU > 0.01){
     p._ansUCorrected = ansUcorrected;
     p._ansUWarning   = true;
   }
-  const ansU = ansUcorrected; // 補正後の値を使用
+  const ansU = ansUcorrected;
 
-  const cols=p.cols, qCount=questions.length, perCol=Math.ceil(qCount/cols);
+  // オーバーフロー検知 → 列数を自動増加（最大8列）
+  // u方向（下端）がはみ出す場合のみ列数増加で対応
+  // v方向（右端）はみ出しは列数増加では解決しないので別途警告
+  let cols = p.cols;
+  const MAX_COLS = 8;
+  while(cols < MAX_COLS && checkAnsOverflow(ansU, cols, p, outer).u){
+    cols++;
+  }
+  const of = checkAnsOverflow(ansU, cols, p, outer);
+  p._colsUsed     = cols;
+  p._colsExpanded = (cols > p.cols) ? cols : null;
+  p._overflowU    = of.u;
+  p._overflowV    = of.v;
+  p._stillOverflow= of.u || of.v;
+
+  const qCount=questions.length, perCol=Math.ceil(qCount/cols);
   const availV=outer.vLen-p.firstV;
   const colVLen=(availV-p.colGap*(cols-1))/cols;
   const colLayouts=[];
@@ -454,10 +521,8 @@ function calcAns(p,outer){
       }
       groups.push({qi,q,mbU,tmU:tmUfromMB(mbU,p),vs});
     }
-    // 枠のu/v範囲
     const frameU1=ansU-BOX_PAD_U;
     const frameU2=(groups.length>0? groups[groups.length-1].mbU+p.mbU: ansU)+BOX_PAD_U;
-    // v方向: 設問番号列 + MB群
     const mbV1=p.face==='omote'? colV0: colV0-(p.mbV);
     const mbV2=p.face==='omote'? colV0+colVLen: colV0+p.mbV+colVLen;
     const frameV1=mbV1-BOX_PAD_V;
@@ -591,8 +656,8 @@ function drawAll(r, p, outer){
 // ================================================================
 const PX=2.8;
 
-function makeCanvasRenderer(ctx, p, off, sheet){
-  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen); }
+function makeCanvasRenderer(ctx, p, off, sheet, b4vLen){
+  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen,b4vLen); }
   // u,v方向の矩形を画面x,y矩形に変換
   function uvRect(u,v,du,dv){
     const tl=toXY(u,v), br=toXY(u+du,v+dv);
@@ -678,21 +743,25 @@ function renderPreview(){
   const outer=getOuter(p.orient);
 
   const canvas=document.getElementById('preview-canvas');
-  canvas.width =Math.round((p.orient==='tate'?b4.vLen:b4.uLen)*PX);
-  canvas.height=Math.round((p.orient==='tate'?b4.uLen:b4.vLen)*PX);
+  // 縦型: x=v方向 → canvas幅=b4.vLen=257, 高さ=b4.uLen=364
+  // 横型: x=u方向 → canvas幅=b4.uLen=364, 高さ=b4.vLen=257
+  canvas.width =Math.round((p.orient==='tate'? b4.vLen : b4.uLen)*PX);
+  canvas.height=Math.round((p.orient==='tate'? b4.uLen : b4.vLen)*PX);
   const ctx=canvas.getContext('2d');
 
   // B4背景
   ctx.fillStyle='#e0e0e0'; ctx.fillRect(0,0,canvas.width,canvas.height);
-  // A4エリア
-  const a4=p.orient==='tate'
-    ? {x:off.ouV,y:off.ouU,w:sheet.vLen,h:sheet.uLen}
-    : {x:off.ouU,y:off.ouV,w:sheet.uLen,h:sheet.vLen};
-  ctx.fillStyle='#fff'; ctx.fillRect(a4.x*PX,a4.y*PX,a4.w*PX,a4.h*PX);
+  // A4エリア（uv2xyで左上・右下を変換して矩形描画）
+  const tl=uv2xy(0, 0, p.orient, off, sheet.vLen, b4.vLen);
+  const br=uv2xy(sheet.uLen, sheet.vLen, p.orient, off, sheet.vLen, b4.vLen);
+  ctx.fillStyle='#fff';
+  ctx.fillRect(Math.min(tl.x,br.x)*PX, Math.min(tl.y,br.y)*PX,
+               Math.abs(br.x-tl.x)*PX, Math.abs(br.y-tl.y)*PX);
   ctx.strokeStyle='#ccc'; ctx.lineWidth=0.5;
-  ctx.strokeRect(a4.x*PX,a4.y*PX,a4.w*PX,a4.h*PX);
+  ctx.strokeRect(Math.min(tl.x,br.x)*PX, Math.min(tl.y,br.y)*PX,
+                 Math.abs(br.x-tl.x)*PX, Math.abs(br.y-tl.y)*PX);
 
-  const r=makeCanvasRenderer(ctx,p,off,sheet);
+  const r=makeCanvasRenderer(ctx,p,off,sheet,b4.vLen);
   const {tmCount,mbCount}=drawAll(r,p,outer);
 
   document.getElementById('st-orient').textContent=p.orient==='tate'?'縦型':'横型';
@@ -706,13 +775,33 @@ function renderPreview(){
     stEl.textContent='OK';
     stEl.className='ok';
   }
+
+  // 解答欄カード内の警告表示
+  const warnEl=document.getElementById('ans-warning');
+  const msgs=[];
+  if(p._colsExpanded){
+    msgs.push(`⚠ 下端はみ出しのため列数を ${p.cols} → ${p._colsExpanded} に自動拡張しました`);
+  }
+  if(p._overflowU){
+    msgs.push(`⚠ ${p._colsUsed}列でも下端をはみ出します。設問数・ピッチ・開始位置を見直してください`);
+  }
+  if(p._overflowV){
+    msgs.push(`⚠ 選択肢数が多く右端をはみ出します。選択肢数・ピッチ・列間隔を見直してください`);
+  }
+  if(msgs.length>0){
+    warnEl.style.display='block';
+    warnEl.innerHTML=msgs.join('<br>');
+  } else {
+    warnEl.style.display='none';
+    warnEl.innerHTML='';
+  }
 }
 
 // ================================================================
 //  PDF レンダラー
 // ================================================================
-function makePDFRenderer(doc,p,off,sheet){
-  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen); }
+function makePDFRenderer(doc,p,off,sheet,b4vLen){
+  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen,b4vLen); }
   function uvRect(u,v,du,dv){
     const tl=toXY(u,v),br=toXY(u+du,v+dv);
     return {x:Math.min(tl.x,br.x),y:Math.min(tl.y,br.y),
@@ -768,10 +857,12 @@ function generatePDF(){
   const b4=getB4UV(p.orient);
   const off=getOffset(p.orient);
   const outer=getOuter(p.orient);
-  const pdfW=p.orient==='tate'?b4.vLen:b4.uLen;
-  const pdfH=p.orient==='tate'?b4.uLen:b4.vLen;
+  // 縦型: PDF幅=b4.vLen=257, 高さ=b4.uLen=364
+  // 横型: PDF幅=b4.uLen=364, 高さ=b4.vLen=257
+  const pdfW=p.orient==='tate'? b4.vLen : b4.uLen;
+  const pdfH=p.orient==='tate'? b4.uLen : b4.vLen;
   const doc=new jsPDF({unit:'mm',format:[pdfW,pdfH],orientation:'portrait'});
-  const r=makePDFRenderer(doc,p,off,sheet);
+  const r=makePDFRenderer(doc,p,off,sheet,b4.vLen);
   drawAll(r,p,outer);
   // フッター
   doc.setFontSize(3); doc.setTextColor(160);
