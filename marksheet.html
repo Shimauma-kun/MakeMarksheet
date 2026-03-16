@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マークシート生成ツール v4</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#0c0e14;--surf:#13151f;--surf2:#1a1d2b;
+  --border:#282d45;--border2:#353b58;
+  --acc:#5b8af0;--acc2:#3f6bd4;--acc-glow:rgba(91,138,240,.12);
+  --txt:#dde1f0;--txt2:#7c85a8;--txt3:#454c6e;
+  --ok:#3ecf8e;--warn:#f5a623;--danger:#f06060;
+  --mono:'JetBrains Mono',monospace;--sans:'Noto Sans JP',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px;line-height:1.5;height:100vh;overflow:hidden;}
+.app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:48px 1fr;height:100vh;}
+header{grid-column:1/-1;background:var(--surf);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;}
+header h1{font-size:14px;font-weight:700;letter-spacing:.06em;}
+.badge{font-family:var(--mono);font-size:9px;background:var(--acc-glow);color:var(--acc);border:1px solid rgba(91,138,240,.3);padding:2px 7px;border-radius:3px;letter-spacing:.08em;}
+.sidebar{background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:8px;}
+.sidebar::-webkit-scrollbar{width:3px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.card{background:var(--surf2);border:1px solid var(--border);border-radius:5px;padding:10px 12px;}
+.ctitle{font-size:10px;font-weight:700;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+.ctitle::before{content:'';display:block;width:2px;height:10px;background:var(--acc);border-radius:1px;}
+.row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px;}
+.row:last-child{margin-bottom:0;}
+.row label{font-size:11px;color:var(--txt2);white-space:nowrap;}
+.row-col{flex-direction:column;align-items:flex-start;gap:4px;}
+input[type=number],select{background:var(--bg);border:1px solid var(--border2);border-radius:3px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:3px 7px;width:80px;text-align:right;outline:none;transition:border-color .15s;}
+input[type=number]:focus,select:focus{border-color:var(--acc);}
+select{width:120px;text-align:left;cursor:pointer;}
+.rpg{display:flex;gap:4px;flex-wrap:wrap;}
+.rpg label{display:flex;align-items:center;gap:3px;cursor:pointer;padding:2px 7px;background:var(--bg);border:1px solid var(--border2);border-radius:3px;font-size:10px;color:var(--txt2);transition:all .12s;white-space:nowrap;}
+.rpg input[type=radio]{display:none;}
+.rpg label:has(input:checked){background:var(--acc-glow);border-color:var(--acc);color:var(--acc);}
+.btn{border:none;border-radius:4px;cursor:pointer;font-family:var(--sans);font-size:11px;font-weight:700;padding:6px 12px;transition:all .15s;display:inline-flex;align-items:center;gap:4px;}
+.btn-ghost{background:var(--bg);border:1px solid var(--border2);color:var(--txt2);}
+.btn-ghost:hover{border-color:var(--acc);color:var(--acc);}
+.btn-primary{background:var(--acc);color:#fff;width:100%;justify-content:center;font-size:12px;padding:9px;}
+.btn-primary:hover{background:var(--acc2);}
+.qlist{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:6px;}
+.qlist::-webkit-scrollbar{width:3px;}
+.qlist::-webkit-scrollbar-thumb{background:var(--border2);}
+.qitem{display:grid;grid-template-columns:20px 1fr 60px 24px;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 6px;}
+.qnum{font-family:var(--mono);font-size:10px;color:var(--txt3);text-align:center;}
+.qlabel{font-size:11px;color:var(--txt2);}
+.qinput{background:var(--surf);border:1px solid var(--border2);border-radius:3px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:2px 5px;width:100%;text-align:center;outline:none;}
+.qinput:focus{border-color:var(--acc);}
+.qdel{background:none;border:1px solid var(--border);border-radius:2px;color:var(--txt3);cursor:pointer;font-size:12px;line-height:1;padding:1px 4px;transition:all .12s;}
+.qdel:hover{border-color:var(--danger);color:var(--danger);}
+.preview{background:#1e1e1e;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px;position:relative;}
+.preview::-webkit-scrollbar{width:6px;height:6px;}
+.preview::-webkit-scrollbar-thumb{background:#444;border-radius:3px;}
+#preview-canvas{background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.6);display:block;}
+.statusbar{position:absolute;bottom:10px;right:12px;font-family:var(--mono);font-size:10px;color:var(--txt3);background:var(--surf);border:1px solid var(--border);border-radius:3px;padding:3px 8px;display:flex;gap:10px;}
+.ok{color:var(--ok);}.warn{color:var(--warn);}
+.hint{font-size:10px;color:var(--txt3);font-family:var(--mono);}
+.divider{height:1px;background:var(--border);margin:6px 0;}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>マークシート生成ツール</h1>
+  <span class="badge">v4 / SR-3500</span>
+  <span class="badge" style="margin-left:auto;cursor:pointer" onclick="generatePDF()">▶ PDF出力</span>
+</header>
+
+<aside class="sidebar">
+  <div class="card">
+    <div class="ctitle">センサーピッチ</div>
+    <div class="row row-col">
+      <div class="rpg">
+        <label><input type="radio" name="pitch" value="0.25" checked><span>0.25</span></label>
+        <label><input type="radio" name="pitch" value="1/6"><span>1/6</span></label>
+        <label><input type="radio" name="pitch" value="0.2"><span>0.2</span></label>
+        <label><input type="radio" name="pitch" value="0.2s"><span>0.2s</span></label>
+        <label><input type="radio" name="pitch" value="0.3"><span>0.3</span></label>
+        <label><input type="radio" name="pitch" value="0.3F"><span>0.3F</span></label>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="row"><label>ピッチ値</label><span class="hint" id="inf-pitch">6.35 mm</span></div>
+    <div class="row"><label>TM短辺×長辺</label><span class="hint" id="inf-tm">0.89×5.9 mm</span></div>
+    <div class="row"><label>TMオフセット</label><span class="hint" id="inf-tmpos">-2.0 mm</span></div>
+    <div class="row"><label>最大MB数/行</label><span class="hint" id="inf-mbmax">33</span></div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">シート向き・面</div>
+    <div class="row">
+      <label>向き</label>
+      <div class="rpg">
+        <label><input type="radio" name="orient" value="tate" checked><span>縦型</span></label>
+        <label><input type="radio" name="orient" value="yoko"><span>横型</span></label>
+      </div>
+    </div>
+    <div class="row">
+      <label>面</label>
+      <div class="rpg">
+        <label><input type="radio" name="face" value="omote" checked><span>おもて</span></label>
+        <label><input type="radio" name="face" value="ura"><span>うら</span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">マークボックス</div>
+    <div class="row">
+      <label>形状</label>
+      <div class="rpg">
+        <label><input type="radio" name="mbshape" value="ellipse" checked><span>楕円</span></label>
+        <label><input type="radio" name="mbshape" value="rect"><span>矩形</span></label>
+      </div>
+    </div>
+    <div class="row"><label>短辺 (mm)</label><input type="number" id="mb-s" value="2.5" min="0.5" max="10" step="0.1"></div>
+    <div class="row"><label>長辺 (mm)</label><input type="number" id="mb-l" value="4" min="0.5" max="10" step="0.1"></div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">受験番号欄</div>
+    <div class="row">
+      <label>表示</label>
+      <div class="rpg">
+        <label><input type="radio" name="examno" value="show" checked><span>あり</span></label>
+        <label><input type="radio" name="examno" value="hide"><span>なし</span></label>
+      </div>
+    </div>
+    <div class="row"><label>桁数</label><input type="number" id="en-digits" value="6" min="1" max="12" step="1"></div>
+    <div class="row"><label>開始位置U (mm)</label><input type="number" id="en-u" value="10" min="0" max="200" step="0.5"></div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">解答欄</div>
+    <div class="row"><label>列数</label><input type="number" id="col-count" value="3" min="1" max="8" step="1"></div>
+    <div class="row"><label>列間隔 (mm)</label><input type="number" id="col-gap" value="6" min="2" max="40" step="0.5"></div>
+    <div class="row"><label>開始位置U (mm)</label><input type="number" id="ans-u" value="38" min="5" max="250" step="0.5"></div>
+    <div class="divider"></div>
+    <div class="qlist" id="qlist"></div>
+    <div style="display:flex;gap:4px">
+      <button class="btn btn-ghost" style="flex:1;font-size:10px" onclick="addQ()">＋ 追加</button>
+      <button class="btn btn-ghost" style="flex:1;font-size:10px" onclick="toggleBulk()">まとめて</button>
+    </div>
+    <div id="bulk-panel" style="display:none;margin-top:6px">
+      <div class="row"><label>問数</label><input type="number" id="bk-cnt" value="20" min="1" max="200" style="width:70px"></div>
+      <div class="row"><label>選択肢数</label><input type="number" id="bk-ch" value="10" min="2" max="20" style="width:70px"></div>
+      <button class="btn btn-ghost" style="width:100%;margin-top:4px;font-size:10px" onclick="execBulk()">追加実行</button>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="generatePDF()">PDF を生成・ダウンロード</button>
+  <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="renderPreview()">プレビュー更新</button>
+</aside>
+
+<main class="preview">
+  <canvas id="preview-canvas"></canvas>
+  <div class="statusbar">
+    <span id="st-orient">縦型</span>
+    <span id="st-tm">TM: —</span>
+    <span id="st-mb">MB: —</span>
+    <span id="st-ov" class="ok">OK</span>
+  </div>
+</main>
+</div>
+
+<script>
+// ================================================================
+//  定数
+// ================================================================
+const A4_SHORT=210, A4_LONG=297;
+const B4_SHORT=257, B4_LONG=364;
+
+// ピッチマスター
+// tmS: TM短辺、tmL: TM長辺
+// tmPos: 外枠端からTM端までのオフセット（負=外枠外側）
+const PITCH_DEF={
+  '0.25':{ pitch:6.35,  firstV:6.35,  maxMB:33, tmS:0.89, tmL:5.9,  tmPos:-2.0  },
+  '1/6': { pitch:4.233, firstV:11.43, maxMB:48, tmS:1.27, tmL:3.81, tmPos:5.085 },
+  '0.2': { pitch:5.08,  firstV:11.75, maxMB:40, tmS:0.89, tmL:5.9,  tmPos:-2.0  },
+  '0.2s':{ pitch:5.08,  firstV:12.7,  maxMB:40, tmS:0.89, tmL:3.81, tmPos:5.095 },
+  '0.3': { pitch:7.62,  firstV:14.50, maxMB:27, tmS:0.89, tmL:7.0,  tmPos:-2.0  },
+  '0.3F':{ pitch:7.62,  firstV:17.78, maxMB:24, tmS:0.5,  tmL:5.08, tmPos:7.62  },
+};
+
+// TM制御型最小間隔 (mm)
+const TM_MIN_INTERVAL = 4.23;
+
+// 外枠マージン（シート内側、mm）
+const MAR={ u1:5, u2:5, v1:8, v2:8 };
+
+// 枠余白 (mm)
+const BOX_PAD_U=1.5;  // u方向（上下）余白
+const BOX_PAD_V=1.5;  // v方向（左右）余白
+
+// 設問番号列幅 (mm)
+const QNUM_COL_W=5.5;
+
+// ================================================================
+//  座標系について
+// ================================================================
+// u軸 = センサー通過方向
+//   縦型: 紙面の上→下（pdfY方向）
+//   横型: 紙面の左→右（pdfX方向）
+// v軸 = MB展開方向（選択肢が並ぶ方向）
+//   縦型: 紙面の左→右（pdfX方向）  ※TMは左辺、MBは右方向へ展開
+//   横型: 紙面の下→上              ※TMは下辺、MBは上方向へ展開
+//
+// TMのサイズ:
+//   「TM・MBの長辺方向はシートの長辺方向と逆」
+//   縦型(シート長辺=u方向): TM・MB長辺=v方向（横長）
+//     → TM: u方向にtmS、v方向にtmL
+//   横型(シート長辺=v方向): TM・MB長辺=u方向（縦長）
+//     → TM: u方向にtmL、v方向にtmS
+//
+// MBのサイズ: TMと同じ向き
+//   縦型: MB短辺=u方向、長辺=v方向 → mbU=mbS, mbV=mbL（横長MB）
+//   横型: MB長辺=u方向、短辺=v方向 → mbU=mbL, mbV=mbS（縦長MB）
+
+// ================================================================
+//  設問リスト
+// ================================================================
+let questions=[], qidSeed=0, bulkOpen=false;
+function addQ(ch=10){ qidSeed++; questions.push({id:qidSeed,choices:ch}); renderQList(); renderPreview(); }
+function removeQ(id){ questions=questions.filter(q=>q.id!==id); renderQList(); renderPreview(); }
+function toggleBulk(){ bulkOpen=!bulkOpen; document.getElementById('bulk-panel').style.display=bulkOpen?'block':'none'; }
+function execBulk(){
+  const cnt=parseInt(document.getElementById('bk-cnt').value);
+  const ch=parseInt(document.getElementById('bk-ch').value);
+  for(let i=0;i<cnt;i++) addQ(ch);
+  bulkOpen=false; document.getElementById('bulk-panel').style.display='none';
+}
+function renderQList(){
+  const el=document.getElementById('qlist'); el.innerHTML='';
+  questions.forEach((q,idx)=>{
+    const d=document.createElement('div'); d.className='qitem';
+    d.innerHTML=`<span class="qnum">${idx+1}</span><span class="qlabel">問${idx+1}</span>
+      <input class="qinput" type="number" value="${q.choices}" min="2" max="20"
+        onchange="questions[${idx}].choices=parseInt(this.value);renderPreview()">
+      <button class="qdel" onclick="removeQ(${q.id})">×</button>`;
+    el.appendChild(d);
+  });
+}
+
+// ================================================================
+//  パラメータ取得
+// ================================================================
+function getP(){
+  const pk=document.querySelector('input[name=pitch]:checked').value;
+  const pd=PITCH_DEF[pk];
+  const orient=document.querySelector('input[name=orient]:checked').value;
+  const face=document.querySelector('input[name=face]:checked').value;
+  const mbShape=document.querySelector('input[name=mbshape]:checked').value;
+  const mbS=parseFloat(document.getElementById('mb-s').value); // 短辺
+  const mbL=parseFloat(document.getElementById('mb-l').value); // 長辺
+  // TM・MBの長辺方向はシートの長辺方向と「逆」
+  // 縦型(シート長辺=u方向): TM・MB長辺=v方向（横長）→ tmU=tmS, tmV=tmL, mbU=mbS, mbV=mbL
+  // 横型(シート長辺=v方向): TM・MB長辺=u方向（縦長）→ tmU=tmL, tmV=tmS, mbU=mbL, mbV=mbS
+  const isTate=orient==='tate';
+  return {
+    pk, pd, orient, face, mbShape,
+    pitch: pd.pitch,
+    firstV:pd.firstV,
+    maxMB: pd.maxMB,
+    tmPos: pd.tmPos,
+    // TM寸法（u/v軸）
+    tmU: isTate ? pd.tmS : pd.tmL,  // 縦型=短辺がu方向、横型=長辺がu方向
+    tmV: isTate ? pd.tmL : pd.tmS,  // 縦型=長辺がv方向、横型=短辺がv方向
+    // MB寸法（u/v軸）
+    mbU: isTate ? mbS : mbL,  // 縦型=短辺がu方向（横長MB）
+    mbV: isTate ? mbL : mbS,  // 縦型=長辺がv方向（横長MB）
+    mbS, mbL,
+    cols:   parseInt(document.getElementById('col-count').value),
+    colGap: parseFloat(document.getElementById('col-gap').value),
+    ansU:   parseFloat(document.getElementById('ans-u').value),
+    showExamNo: document.querySelector('input[name=examno]:checked').value==='show',
+    enDigits: parseInt(document.getElementById('en-digits').value),
+    enU: parseFloat(document.getElementById('en-u').value),
+  };
+}
+
+// ================================================================
+//  ピッチUI同期
+// ================================================================
+document.querySelectorAll('input[name=pitch]').forEach(r=>r.addEventListener('change',()=>{
+  const d=PITCH_DEF[r.value];
+  document.getElementById('inf-pitch').textContent=d.pitch+' mm';
+  document.getElementById('inf-tm').textContent=d.tmS+'×'+d.tmL+' mm';
+  document.getElementById('inf-tmpos').textContent=d.tmPos+' mm';
+  document.getElementById('inf-mbmax').textContent=d.maxMB;
+  renderPreview();
+}));
+['mb-s','mb-l','col-count','col-gap','ans-u','en-digits','en-u'].forEach(id=>
+  document.getElementById(id).addEventListener('change',renderPreview));
+document.querySelectorAll('input[name=face],input[name=orient],input[name=mbshape],input[name=examno]')
+  .forEach(r=>r.addEventListener('change',renderPreview));
+
+// ================================================================
+//  シート・B4サイズ取得（u/v単位）
+// ================================================================
+function getSheetUV(orient){ return orient==='tate'?{uLen:A4_LONG,vLen:A4_SHORT}:{uLen:A4_SHORT,vLen:A4_LONG}; }
+function getB4UV(orient)   { return orient==='tate'?{uLen:B4_LONG,vLen:B4_SHORT}:{uLen:B4_SHORT,vLen:B4_LONG}; }
+function getOffset(orient){
+  const s=getSheetUV(orient),b=getB4UV(orient);
+  return {ouU:(b.uLen-s.uLen)/2, ouV:(b.vLen-s.vLen)/2};
+}
+
+// ================================================================
+//  u,v → 描画座標(x,y) 変換
+// ================================================================
+// B4左上を原点とした描画座標
+// 縦型: x=offV+v,  y=offU+u
+// 横型: x=offU+u,  y=offV+(vLen-v)  ←v原点が下端のため
+function uv2xy(u,v,orient,off,vLen){
+  return orient==='tate'
+    ? {x:off.ouV+v, y:off.ouU+u}
+    : {x:off.ouU+u, y:off.ouV+(vLen-v)};
+}
+
+// ================================================================
+//  外枠 u,v座標
+// ================================================================
+function getOuter(orient){
+  const s=getSheetUV(orient);
+  return {u1:MAR.u1, u2:s.uLen-MAR.u2, v1:MAR.v1, v2:s.vLen-MAR.v2,
+          uLen:s.uLen-MAR.u1-MAR.u2, vLen:s.vLen-MAR.v1-MAR.v2};
+}
+
+// ================================================================
+//  TM v座標
+// tmPos<0 → 外枠より外側（塗り足し）
+// tmPos>0 → 外枠内側
+// おもて: TM v開始 = outer.v1 + tmPos
+// うら  : TM v開始 = outer.v2 - tmPos - tmV（v方向TM寸法）
+// ================================================================
+function tmVstart(p,outer){
+  return p.face==='omote'
+    ? outer.v1+p.tmPos
+    : outer.v2-p.tmPos-p.tmV;
+}
+
+// ================================================================
+//  MB v座標リスト（1行分）
+// おもて: outer.v1 + firstV + ci*pitch
+// うら  : outer.v2 - firstV - mbV - ci*pitch
+// ================================================================
+function mbVs(p,outer,choices){
+  const arr=[];
+  for(let ci=0;ci<choices;ci++){
+    arr.push(p.face==='omote'
+      ? outer.v1+p.firstV+ci*p.pitch
+      : outer.v2-p.firstV-p.mbV-ci*p.pitch);
+  }
+  return arr;
+}
+
+// ================================================================
+//  TM u座標計算（制御型）
+// MBの中心に対してTMを制御位置に配置:
+//   TM中心 = MB中心 + tmU_half * 3  (制御型: MB中心から1.5TM分ずらす)
+//   TM u開始 = MB中心 + tmU*1.5 - tmU/2
+// ================================================================
+function tmUfromMB(mbU,p){
+  return mbU + p.mbU/2 + p.tmU*1.5 - p.tmU/2;
+}
+
+// ================================================================
+//  レイアウト計算
+// ================================================================
+
+// 受験番号欄レイアウト
+function calcExamNo(p,outer){
+  const DLAB=['十万位','万位','千位','百位','十位','一位'];
+  const rows=[];
+  for(let ri=0;ri<10;ri++){
+    const mbU=p.enU+ri*p.pitch;
+    rows.push({ri, label:String(ri), mbU, tmU:tmUfromMB(mbU,p), vs:mbVs(p,outer,p.enDigits)});
+  }
+  const digLabels=DLAB.slice(DLAB.length-p.enDigits);
+  const frameU1=p.enU - BOX_PAD_U;
+  const frameU2=rows[9].mbU + p.mbU + BOX_PAD_U;
+  const vs0=rows[0].vs;
+  const frameV1=(p.face==='omote'? vs0[0]: vs0[p.enDigits-1]) - BOX_PAD_V;
+  const frameV2=(p.face==='omote'? vs0[p.enDigits-1]+p.mbV: vs0[0]+p.mbV) + BOX_PAD_V;
+  return {rows, digLabels, frameU1, frameU2, frameV1, frameV2};
+}
+
+// ----------------------------------------------------------------
+//  受験番号欄の最終TM終端u座標を取得
+//  → 解答欄の先頭TM開始位置の下限を算出するために使用
+// ----------------------------------------------------------------
+function getExamNoLastTMend(p,outer){
+  if(!p.showExamNo) return null;
+  const en=calcExamNo(p,outer);
+  // 最後の行（ri=9）のTM終端 = tmU + tmU寸法
+  const lastTMu = en.rows[9].tmU + p.tmU;
+  return lastTMu;
+}
+
+// ----------------------------------------------------------------
+//  解答欄の先頭TM u座標の下限を計算
+//  受験番号欄の最終TM終端 + TM最小間隔（制御型4.23mm）以上
+// ----------------------------------------------------------------
+function calcAnsUmin(p,outer){
+  const examLastTMend = getExamNoLastTMend(p,outer);
+  if(examLastTMend===null) return p.ansU; // 受験番号欄なし→制約なし
+
+  // 解答欄先頭行のTM u開始 = tmUfromMB(ansU, p)
+  // これが examLastTMend + TM_MIN_INTERVAL 以上になるよう ansU を逆算
+  // tmUfromMB(mbU,p) = mbU + mbU/2 + tmU*1.5 - tmU/2
+  // → mbU = tmU_start - mbU/2 - tmU*1.5 + tmU/2
+  const tmUstartMin = examLastTMend + TM_MIN_INTERVAL;
+  const mbUmin = tmUstartMin - p.mbU/2 - p.tmU*1.5 + p.tmU/2;
+
+  // ピッチ境界に揃える（切り上げ）
+  const ansPitchAligned = Math.ceil((mbUmin - p.ansU) / p.pitch) * p.pitch + p.ansU;
+  return Math.max(p.ansU, ansPitchAligned);
+}
+
+// 解答欄レイアウト
+function calcAns(p,outer){
+  // TM座標確認: ansU が TM間隔制約を満たすよう補正
+  const ansUcorrected = calcAnsUmin(p,outer);
+  const ansUdiff = ansUcorrected - p.ansU;
+  if(ansUdiff>0.01){
+    // UIのステータスに警告を反映（drawAll完了後に呼ばれるためフラグで管理）
+    p._ansUCorrected = ansUcorrected;
+    p._ansUWarning   = true;
+  }
+  const ansU = ansUcorrected; // 補正後の値を使用
+
+  const cols=p.cols, qCount=questions.length, perCol=Math.ceil(qCount/cols);
+  const availV=outer.vLen-p.firstV;
+  const colVLen=(availV-p.colGap*(cols-1))/cols;
+  const colLayouts=[];
+  for(let c=0;c<cols;c++){
+    const startQ=c*perCol, endQ=Math.min(startQ+perCol,qCount);
+    const colV0=p.face==='omote'
+      ? outer.v1+p.firstV+c*(colVLen+p.colGap)
+      : outer.v2-p.firstV-(c+1)*colVLen-c*p.colGap;
+    const groups=[];
+    for(let qi=startQ;qi<endQ;qi++){
+      const q=questions[qi];
+      const mbU=ansU+(qi-startQ)*p.pitch;
+      const vs=[];
+      for(let ci=0;ci<q.choices;ci++){
+        vs.push(p.face==='omote'
+          ? colV0+ci*p.pitch
+          : colV0+colVLen-p.mbV-ci*p.pitch);
+      }
+      groups.push({qi,q,mbU,tmU:tmUfromMB(mbU,p),vs});
+    }
+    // 枠のu/v範囲
+    const frameU1=ansU-BOX_PAD_U;
+    const frameU2=(groups.length>0? groups[groups.length-1].mbU+p.mbU: ansU)+BOX_PAD_U;
+    // v方向: 設問番号列 + MB群
+    const mbV1=p.face==='omote'? colV0: colV0-(p.mbV);
+    const mbV2=p.face==='omote'? colV0+colVLen: colV0+p.mbV+colVLen;
+    const frameV1=mbV1-BOX_PAD_V;
+    const frameV2=mbV2+BOX_PAD_V;
+    colLayouts.push({colV0,colVLen,groups,frameU1,frameU2,frameV1,frameV2});
+  }
+  return colLayouts;
+}
+
+// ================================================================
+//  TM重複排除
+// 受験番号欄と解答欄のTM u座標を合わせた一覧から重複を除去
+// 許容誤差 0.01mm 以内は同一とみなす
+// ================================================================
+function dedupTMs(tmList){
+  const sorted=tmList.slice().sort((a,b)=>a.u-b.u);
+  const result=[];
+  for(const tm of sorted){
+    if(result.length===0 || Math.abs(tm.u-result[result.length-1].u)>0.01){
+      result.push(tm);
+    }
+  }
+  return result;
+}
+
+// ================================================================
+//  描画エンジン（Canvas / PDF 共通インターフェース）
+// ================================================================
+// draw(renderer, p, outer) で全要素を描く
+// renderer は Canvas用 or jsPDF用のアダプタ
+
+function drawAll(r, p, outer){
+  const off   = getOffset(p.orient);
+  const sheet = getSheetUV(p.orient);
+  const tmV0  = tmVstart(p,outer);
+  let tmCount=0, mbCount=0;
+
+  // --- 外枠 ---
+  r.rect(outer.u1,outer.v1,outer.uLen,outer.vLen,'stroke',{color:[0,0,0],lw:0.3});
+
+  // --- TMリスト収集 ---
+  const allTMs=[];
+
+  // --- 受験番号欄 ---
+  if(p.showExamNo){
+    const en=calcExamNo(p,outer);
+    // 枠
+    r.rectUV(en.frameU1,en.frameV1,en.frameU2-en.frameU1,en.frameV2-en.frameV1,'stroke',{color:[176,0,80],lw:0.3});
+    // 桁区切り縦線（v方向）
+    en.rows[0].vs.forEach((v,di)=>{
+      if(di>0){
+        const sepV=v-p.pitch/2+p.mbV/2; // MB間の中間
+        r.lineUV(en.frameU1,sepV,en.frameU2,sepV,{color:[176,0,80],lw:0.2});
+      }
+    });
+    // 記入欄（空白行）の罫線
+    const entryU2=en.frameU1+(en.frameU2-en.frameU1)*0.25;
+    r.lineUV(entryU2,en.frameV1,entryU2,en.frameV2,{color:[176,0,80],lw:0.2});
+    // 桁ラベル
+    en.digLabels.forEach((lbl,di)=>{
+      const v=en.rows[0].vs[di]+p.mbV/2;
+      r.textUV(en.frameU1+(entryU2-en.frameU1)/2-1, v, lbl, {size:2.5,color:[40,40,40],anchor:'center'});
+    });
+    // 「受験番号欄」タイトル
+    const vMid=(en.frameV1+en.frameV2)/2;
+    r.textUV(en.frameU1+(entryU2-en.frameU1)/2+1, vMid, '受験番号欄',{size:2.8,color:[20,20,20],anchor:'center'});
+    // 0〜9 + MB
+    en.rows.forEach(row=>{
+      allTMs.push({u:row.tmU, v:tmV0});
+      row.vs.forEach(v=>{
+        r.mb(row.mbU,v,p,String(row.ri)); mbCount++;
+      });
+      // 行ラベル（数字）
+      const labelV=p.face==='omote'? en.frameV1-0.5: en.frameV2+0.5;
+      r.textUV(row.mbU+p.mbU/2, labelV, String(row.ri),
+        {size:2.5,color:[50,50,50],anchor:p.face==='omote'?'end':'start'});
+    });
+  }
+
+  // --- 解答欄 ---
+  const colLayouts=calcAns(p,outer);
+  colLayouts.forEach(col=>{
+    if(col.groups.length===0) return;
+    const fQ=col.groups[0].qi+1;
+    const lQ=col.groups[col.groups.length-1].qi+1;
+
+    // 枠
+    r.rectUV(col.frameU1,col.frameV1,col.frameU2-col.frameU1,col.frameV2-col.frameV1,'stroke',{color:[176,0,80],lw:0.3});
+
+    // 設問番号列のv位置
+    const qNumV=p.face==='omote'
+      ? col.frameV1+BOX_PAD_V
+      : col.frameV2-BOX_PAD_V-QNUM_COL_W;
+    // 設問番号列の右罫線（おもて）or 左罫線（うら）
+    const sepV=p.face==='omote'
+      ? qNumV+QNUM_COL_W
+      : qNumV;
+    r.lineUV(col.frameU1,sepV,col.frameU2,sepV,{color:[176,0,80],lw:0.2});
+
+    // ヘッダ行
+    r.textUV(col.frameU1-1, (col.frameV1+col.frameV2)/2, `${fQ}〜${lQ}`,
+      {size:2.8,color:[20,20,20],anchor:'center'});
+
+    col.groups.forEach(grp=>{
+      allTMs.push({u:grp.tmU, v:tmV0});
+      // 設問番号
+      r.textUV(grp.mbU+p.mbU/2, qNumV+QNUM_COL_W/2, String(grp.qi+1),
+        {size:2.8,color:[40,40,40],anchor:'center'});
+      // 行区切り
+      if(grp.qi>col.groups[0].qi){
+        r.lineUV(grp.mbU-p.pitch/2+p.mbU/2, col.frameV1,
+                 grp.mbU-p.pitch/2+p.mbU/2, col.frameV2,
+                 {color:[220,220,220],lw:0.1});
+      }
+      // MB
+      grp.vs.forEach((v,ci)=>{
+        r.mb(grp.mbU,v,p,String(ci+1)); mbCount++;
+      });
+    });
+  });
+
+  // --- TM重複排除後に描画 ---
+  const tmList=dedupTMs(allTMs);
+  tmList.forEach(tm=>{ r.tm(tm.u,tm.v,p); tmCount++; });
+
+  return {tmCount, mbCount};
+}
+
+// ================================================================
+//  Canvas レンダラー
+// ================================================================
+const PX=2.8;
+
+function makeCanvasRenderer(ctx, p, off, sheet){
+  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen); }
+  // u,v方向の矩形を画面x,y矩形に変換
+  function uvRect(u,v,du,dv){
+    const tl=toXY(u,v), br=toXY(u+du,v+dv);
+    return {x:Math.min(tl.x,br.x),y:Math.min(tl.y,br.y),
+            w:Math.abs(br.x-tl.x),h:Math.abs(br.y-tl.y)};
+  }
+  return {
+    rect(u1,v1,du,dv,mode,st){
+      const rc=uvRect(u1,v1,du,dv);
+      if(mode==='stroke'){
+        ctx.strokeStyle=`rgb(${st.color.join(',')})`;
+        ctx.lineWidth=st.lw;
+        ctx.strokeRect(rc.x*PX,rc.y*PX,rc.w*PX,rc.h*PX);
+      }
+    },
+    rectUV(u1,v1,du,dv,mode,st){
+      this.rect(u1,v1,du,dv,mode,st);
+    },
+    lineUV(u1,v1,u2,v2,st){
+      const p1=toXY(u1,v1), p2=toXY(u2,v2);
+      ctx.strokeStyle=`rgb(${st.color.join(',')})`;
+      ctx.lineWidth=st.lw;
+      ctx.beginPath();
+      ctx.moveTo(p1.x*PX,p1.y*PX);
+      ctx.lineTo(p2.x*PX,p2.y*PX);
+      ctx.stroke();
+    },
+    textUV(u,v,text,opt){
+      const pt=toXY(u,v);
+      ctx.fillStyle=`rgb(${opt.color.join(',')})`;
+      ctx.font=`${opt.size*PX/2.2}px sans-serif`;
+      ctx.textAlign=opt.anchor==='center'?'center':opt.anchor==='end'?'right':'left';
+      ctx.textBaseline='middle';
+      ctx.fillText(text,pt.x*PX,pt.y*PX);
+    },
+    tm(tmU,tmV,p){
+      const rc=uvRect(tmU,tmV,p.tmU,p.tmV);
+      ctx.fillStyle='#000';
+      ctx.fillRect(rc.x*PX,rc.y*PX,rc.w*PX,rc.h*PX);
+    },
+    mb(mbU,mbV,p,label){
+      const rc=uvRect(mbU,mbV,p.mbU,p.mbV);
+      ctx.strokeStyle='rgb(176,0,80)';
+      ctx.lineWidth=0.8;
+      if(p.mbShape==='ellipse'){
+        ctx.beginPath();
+        ctx.ellipse(
+          (rc.x+rc.w/2)*PX,(rc.y+rc.h/2)*PX,
+          rc.w/2*PX,rc.h/2*PX,0,0,Math.PI*2
+        );
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(rc.x*PX,rc.y*PX,rc.w*PX,rc.h*PX);
+      }
+      // MB内に長体テキスト（はみ出し禁止）
+      const maxW=rc.w*PX*0.8;
+      const maxH=rc.h*PX*0.82;
+      ctx.fillStyle='rgb(176,0,80)';
+      ctx.textBaseline='middle';
+      ctx.textAlign='center';
+      // フォントサイズを高さ基準で設定し、幅が超えればscaleX縮小
+      const fs=maxH*0.85;
+      ctx.font=`${fs}px sans-serif`;
+      const tw=ctx.measureText(label).width;
+      const cx=(rc.x+rc.w/2)*PX, cy=(rc.y+rc.h/2)*PX;
+      ctx.save();
+      ctx.translate(cx,cy);
+      if(tw>maxW) ctx.scale(maxW/tw,1);
+      ctx.fillText(label,0,0);
+      ctx.restore();
+    },
+  };
+}
+
+// ================================================================
+//  プレビュー描画
+// ================================================================
+function renderPreview(){
+  const p=getP();
+  const sheet=getSheetUV(p.orient);
+  const b4=getB4UV(p.orient);
+  const off=getOffset(p.orient);
+  const outer=getOuter(p.orient);
+
+  const canvas=document.getElementById('preview-canvas');
+  canvas.width =Math.round((p.orient==='tate'?b4.vLen:b4.uLen)*PX);
+  canvas.height=Math.round((p.orient==='tate'?b4.uLen:b4.vLen)*PX);
+  const ctx=canvas.getContext('2d');
+
+  // B4背景
+  ctx.fillStyle='#e0e0e0'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  // A4エリア
+  const a4=p.orient==='tate'
+    ? {x:off.ouV,y:off.ouU,w:sheet.vLen,h:sheet.uLen}
+    : {x:off.ouU,y:off.ouV,w:sheet.uLen,h:sheet.vLen};
+  ctx.fillStyle='#fff'; ctx.fillRect(a4.x*PX,a4.y*PX,a4.w*PX,a4.h*PX);
+  ctx.strokeStyle='#ccc'; ctx.lineWidth=0.5;
+  ctx.strokeRect(a4.x*PX,a4.y*PX,a4.w*PX,a4.h*PX);
+
+  const r=makeCanvasRenderer(ctx,p,off,sheet);
+  const {tmCount,mbCount}=drawAll(r,p,outer);
+
+  document.getElementById('st-orient').textContent=p.orient==='tate'?'縦型':'横型';
+  document.getElementById('st-tm').textContent=`TM:${tmCount}`;
+  document.getElementById('st-mb').textContent=`MB:${mbCount}`;
+  const stEl=document.getElementById('st-ov');
+  if(p._ansUWarning){
+    stEl.textContent=`解答欄U補正→${p._ansUCorrected.toFixed(2)}mm`;
+    stEl.className='warn';
+  } else {
+    stEl.textContent='OK';
+    stEl.className='ok';
+  }
+}
+
+// ================================================================
+//  PDF レンダラー
+// ================================================================
+function makePDFRenderer(doc,p,off,sheet){
+  function toXY(u,v){ return uv2xy(u,v,p.orient,off,sheet.vLen); }
+  function uvRect(u,v,du,dv){
+    const tl=toXY(u,v),br=toXY(u+du,v+dv);
+    return {x:Math.min(tl.x,br.x),y:Math.min(tl.y,br.y),
+            w:Math.abs(br.x-tl.x),h:Math.abs(br.y-tl.y)};
+  }
+  return {
+    rect(u1,v1,du,dv,mode,st){
+      doc.setDrawColor(...st.color); doc.setLineWidth(st.lw);
+      const rc=uvRect(u1,v1,du,dv);
+      doc.rect(rc.x,rc.y,rc.w,rc.h);
+    },
+    rectUV(u1,v1,du,dv,mode,st){ this.rect(u1,v1,du,dv,mode,st); },
+    lineUV(u1,v1,u2,v2,st){
+      doc.setDrawColor(...st.color); doc.setLineWidth(st.lw);
+      const p1=toXY(u1,v1),p2=toXY(u2,v2);
+      doc.line(p1.x,p1.y,p2.x,p2.y);
+    },
+    textUV(u,v,text,opt){
+      doc.setFontSize(opt.size*2.8); doc.setTextColor(...opt.color);
+      const pt=toXY(u,v);
+      const align=opt.anchor==='center'?'center':opt.anchor==='end'?'right':'left';
+      doc.text(text,pt.x,pt.y,{align,baseline:'middle'});
+    },
+    tm(tmU,tmV,p){
+      doc.setFillColor(0); doc.setDrawColor(0); doc.setLineWidth(0);
+      const rc=uvRect(tmU,tmV,p.tmU,p.tmV);
+      doc.rect(rc.x,rc.y,rc.w,rc.h,'F');
+    },
+    mb(mbU,mbV,p,label){
+      doc.setDrawColor(176,0,80); doc.setLineWidth(0.1);
+      const rc=uvRect(mbU,mbV,p.mbU,p.mbV);
+      if(p.mbShape==='ellipse'){
+        doc.ellipse(rc.x+rc.w/2,rc.y+rc.h/2,rc.w/2,rc.h/2);
+      } else {
+        doc.rect(rc.x,rc.y,rc.w,rc.h);
+      }
+      // MB内テキスト（長体：幅をrc.w*0.8に収める）
+      doc.setTextColor(176,0,80);
+      const fs=Math.min(rc.h*0.82*2.8, rc.w*0.8*2.8/label.length*1.6);
+      doc.setFontSize(Math.max(fs,2));
+      doc.text(label,rc.x+rc.w/2,rc.y+rc.h/2,{align:'center',baseline:'middle'});
+    },
+  };
+}
+
+// ================================================================
+//  PDF生成
+// ================================================================
+function generatePDF(){
+  const {jsPDF}=window.jspdf;
+  const p=getP();
+  const sheet=getSheetUV(p.orient);
+  const b4=getB4UV(p.orient);
+  const off=getOffset(p.orient);
+  const outer=getOuter(p.orient);
+  const pdfW=p.orient==='tate'?b4.vLen:b4.uLen;
+  const pdfH=p.orient==='tate'?b4.uLen:b4.vLen;
+  const doc=new jsPDF({unit:'mm',format:[pdfW,pdfH],orientation:'portrait'});
+  const r=makePDFRenderer(doc,p,off,sheet);
+  drawAll(r,p,outer);
+  // フッター
+  doc.setFontSize(3); doc.setTextColor(160);
+  doc.text(
+    `PITCH:${p.pk}(${p.pitch}mm) | ${p.orient==='tate'?'縦':'横'}型 | TM:制御 | FACE:${p.face==='omote'?'表':'裏'} | MB:${p.mbShape}`,
+    pdfW/2, pdfH-2, {align:'center'}
+  );
+  doc.save(`marksheet_v4_${p.orient}_${p.pk.replace('/','')}_${p.face}.pdf`);
+}
+
+// ================================================================
+//  初期化
+// ================================================================
+for(let i=0;i<60;i++) addQ(10);
+</script>
+</body>
+</html>
