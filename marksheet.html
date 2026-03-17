@@ -446,70 +446,98 @@ function getOuter(orient){
 function calcLayout(p, outer){
   const isTate = p.orient==='tate';
 
+  // ================================================================
+  // TM・MB物理仕様
+  //
+  // 縦型:
+  //   TM固定x = outer.x1 + tmPos（左辺外側）
+  //   MB中心x固定 = outer.x1 + firstX
+  //   MB中心y変化 = along方向（下↓）
+  //   TM変化y = MB中心y - tmS*1.5
+  //
+  // 横型:
+  //   TM固定y = outer.y2 - tmPos - tmH（下辺外側）
+  //   MB中心y固定 = outer.y2 - firstX（全MB共通）
+  //   MB中心x変化 = along方向（右→）
+  //   TM変化x = MB中心x - tmS*1.5
+  //
+  // along軸: 縦型=y（下↓）、横型=x（右→）
+  // perp軸:  縦型=x（右→）、横型=y（上↑=y減少）
+  // ================================================================
+
   // TM固定座標
-  // 縦型おもて: x = outer.x1 + tmPos（左辺外側）
-  // 横型おもて: y = outer.y2 - tmPos - tmH（下辺外側）
-  const tmFix = p.face==='omote'
-    ? (isTate ? outer.x1+p.tmPos : outer.y2-p.tmPos-p.tmH)
-    : (isTate ? outer.x2-p.tmPos-p.tmW : outer.y1+p.tmPos);
+  const tmFixX = p.face==='omote' ? outer.x1+p.tmPos : outer.x2-p.tmPos-p.tmW;
+  const tmFixY = p.face==='omote' ? outer.y2-p.tmPos-p.tmH : outer.y1+p.tmPos;
 
-  // MB垂直方向基準（TM辺からfirstX離れた位置）
-  // 縦型: MB中心x = outer.x1 + firstX
-  // 横型: MB中心y = outer.y2 - firstX
-  const mbPerp = p.face==='omote'
-    ? (isTate ? outer.x1+p.firstX : outer.y2-p.firstX)
-    : (isTate ? outer.x2-p.firstX : outer.y1+p.firstX);
+  // MB固定座標
+  // 縦型: MB中心x固定 = outer.x1+firstX（perp方向の起点）
+  // 横型: MB中心y固定 = outer.y2-firstX（全MB共通のy）
+  const mbFixX = p.face==='omote' ? outer.x1+p.firstX : outer.x2-p.firstX; // 縦型のMB中心x基準
+  const mbFixY = p.face==='omote' ? outer.y2-p.firstX : outer.y1+p.firstX; // 横型のMB中心y固定値
 
-  // TM変化座標: MB中心（センサー通過方向）- tmS*1.5
-  // 縦型: TM_y = MB中心y - tmS*1.5
-  // 横型: TM_x = MB中心x - tmS*1.5
-  function tmVary(mbAlong){ return mbAlong - p.tmS*1.5; }
+  // TM座標生成
+  // 縦型: along=MB中心y, TM_y=along-tmS*1.5, TM_x=固定
+  // 横型: along=MB中心x, TM_x=along-tmS*1.5, TM_y=固定
+  function makeTM(along){
+    return isTate
+      ? {tmX: tmFixX, tmY: along - p.tmS*1.5}
+      : {tmX: along - p.tmS*1.5, tmY: tmFixY};
+  }
+
+  // MB y座標（enStart/ansStart = along座標）
+  // 縦型: mbY = along - mbH/2（along=y変化）
+  // 横型: mbY = mbFixY - mbH/2（固定）
+  function getMbY(along){
+    return isTate ? along - p.mbH/2 : mbFixY - p.mbH/2;
+  }
+
+  // perp座標リスト（桁・選択肢）
+  // 縦型: x方向（右→）: mbFixX + di*pitch
+  // 横型: y方向（上↑）: mbFixY - di*pitch
+  function getPerpCoords(basePerp, count){
+    const coords=[];
+    for(let i=0;i<count;i++){
+      if(isTate) coords.push(basePerp + i*p.pitch - p.mbW/2);
+      else        coords.push(mbFixY - i*p.pitch - p.mbH/2);
+    }
+    return coords;
+  }
 
   // ----------------------------------------------------------------
   // 受験番号欄
   // ----------------------------------------------------------------
-  // 縦型: 0〜9 = y方向、桁 = x方向
-  // 横型: 0〜9 = x方向、桁 = y方向（上↑）
   let examLayout=null, examEnd=0;
   if(p.showExamNo){
     const rows=[];
     for(let ri=0;ri<10;ri++){
-      const along = p.enStart + ri*p.pitch; // センサー通過方向座標
-      const perpCoords=[];
-      for(let di=0;di<p.enDigits;di++){
-        // 縦型: 桁はx方向（右→）  perp + di*pitch
-        // 横型: 桁はy方向（上↑）  perp - di*pitch
-        perpCoords.push(isTate
-          ? mbPerp + di*p.pitch - p.mbW/2
-          : mbPerp - di*p.pitch - p.mbH/2);
-      }
-      if(isTate){
-        rows.push({ri,
-          mbY: along - p.mbH/2,
-          tmX: tmFix, tmY: tmVary(along),
-          xs: perpCoords});
-      } else {
-        rows.push({ri,
-          mbX: along - p.mbW/2,
-          tmX: tmVary(along), tmY: tmFix,
-          ys: perpCoords});
-      }
+      const along = p.enStart + ri*p.pitch; // along方向（縦型=y, 横型=x）
+      const perpCoords = getPerpCoords(mbFixX, p.enDigits);
+      rows.push({ri,
+        mbY: getMbY(along),
+        mbX: isTate ? null : along - p.mbW/2,
+        ...makeTM(along),
+        perpCoords});
     }
+
     if(isTate){
-      examEnd = rows[9].mbY + p.mbH + BOX_PAD;
+      const lastAlong = p.enStart + 9*p.pitch;
+      examEnd = lastAlong + p.mbH/2 + BOX_PAD; // y方向終端
       examLayout={rows,
-        frameX1: rows[0].xs[0]-BOX_PAD,
-        frameX2: rows[0].xs[p.enDigits-1]+p.mbW+BOX_PAD,
-        frameY1: rows[0].mbY-BOX_PAD,
+        frameX1: rows[0].perpCoords[0]-BOX_PAD,
+        frameX2: rows[0].perpCoords[p.enDigits-1]+p.mbW+BOX_PAD,
+        frameY1: p.enStart-p.mbH/2-BOX_PAD,
         frameY2: examEnd};
     } else {
-      examEnd = rows[9].mbX + p.mbW + BOX_PAD;
-      // 横型: 桁はy方向（上↑）なので ys[0]が最下、ys[last]が最上
+      const lastAlong = p.enStart + 9*p.pitch;
+      examEnd = lastAlong + p.mbW/2 + BOX_PAD; // x方向終端
+      // 横型: perpCoords[0]=最下(y大)、perpCoords[last]=最上(y小)
+      const yBottom = rows[0].perpCoords[0] + p.mbH + BOX_PAD;
+      const yTop    = rows[0].perpCoords[p.enDigits-1] - BOX_PAD;
       examLayout={rows,
-        frameX1: rows[0].mbX-BOX_PAD,
+        frameX1: p.enStart - p.mbW/2 - BOX_PAD,
         frameX2: examEnd,
-        frameY1: rows[0].ys[p.enDigits-1]-BOX_PAD,
-        frameY2: rows[0].ys[0]+p.mbH+BOX_PAD};
+        frameY1: yTop,
+        frameY2: yBottom};
     }
   }
 
@@ -518,13 +546,15 @@ function calcLayout(p, outer){
   // ----------------------------------------------------------------
   let ansStart=p.ansStart;
   if(p.showExamNo && examLayout){
-    // 枠同士重なりチェック（センサー通過方向）
-    const minStart = examEnd + BOX_PAD + (isTate?p.mbH:p.mbW)/2;
+    // along方向で枠が重ならないよう補正
+    const mbHalfAlong = isTate ? p.mbH/2 : p.mbW/2;
+    const minStart = examEnd + BOX_PAD + mbHalfAlong;
     if(ansStart < minStart){
       ansStart = p.ansStart + Math.ceil((minStart-p.ansStart)/p.pitch)*p.pitch;
     }
-    // TM間隔チェック
-    const lastEnTMend = tmVary(p.enStart+9*p.pitch) + p.tmH;
+    // TM間隔チェック（along方向）
+    const lastEnAlong = p.enStart + 9*p.pitch;
+    const lastEnTMend = (lastEnAlong - p.tmS*1.5) + p.tmH;
     const minByTM = lastEnTMend + TM_MIN_INTERVAL + p.tmS*1.5;
     if(ansStart < minByTM){
       ansStart = p.ansStart + Math.ceil((minByTM-p.ansStart)/p.pitch)*p.pitch;
@@ -535,8 +565,6 @@ function calcLayout(p, outer){
   // ----------------------------------------------------------------
   // 解答欄レイアウト
   // ----------------------------------------------------------------
-  // 縦型: 選択肢=x方向（右→）、設問=y方向（下↓）、列=x方向折返
-  // 横型: 選択肢=y方向（上↑）、設問=x方向（右→）、列=y方向折返（上↑）
   const cols=p.cols, qCount=questions.length, perCol=Math.ceil(qCount/cols);
   const colLayouts=[];
 
@@ -544,51 +572,48 @@ function calcLayout(p, outer){
     const startQ=c*perCol, endQ=Math.min(startQ+perCol,qCount);
     const maxCh=Math.max(...questions.slice(startQ,endQ).map(q=>q.choices),1);
 
-    // 列cの垂直方向基準（選択肢の第1個の中心座標）
-    let colPerp = mbPerp;
+    // 列のperp基準
+    // 縦型: x方向（右→）: colPerpX = mbFixX + オフセット
+    // 横型: y方向（上↑）: colPerpY = mbFixY - オフセット
+    let colPerpBase = isTate ? mbFixX : mbFixY;
     for(let i=0;i<c;i++){
       const mc=Math.max(...questions.slice(i*perCol,Math.min((i+1)*perCol,qCount)).map(q=>q.choices),1);
-      // 縦型: 右→（増加）、横型: 上↑（減少）
-      if(isTate) colPerp += (mc-1)*p.pitch + p.mbW + p.colGap;
-      else        colPerp -= (mc-1)*p.pitch + p.mbH + p.colGap;
+      if(isTate) colPerpBase += (mc-1)*p.pitch + p.mbW + p.colGap;
+      else        colPerpBase -= (mc-1)*p.pitch + p.mbH + p.colGap;
     }
 
     const groups=[];
     for(let qi=startQ;qi<endQ;qi++){
       const q=questions[qi];
-      const along = ansStart + (qi-startQ)*p.pitch; // センサー通過方向
+      const along = ansStart + (qi-startQ)*p.pitch;
       const perpCoords=[];
       for(let ci=0;ci<q.choices;ci++){
-        // 縦型: 右→（増加）、横型: 上↑（減少）
-        perpCoords.push(isTate
-          ? colPerp + ci*p.pitch - p.mbW/2
-          : colPerp - ci*p.pitch - p.mbH/2);
+        if(isTate) perpCoords.push(colPerpBase + ci*p.pitch - p.mbW/2);
+        else        perpCoords.push(colPerpBase - ci*p.pitch - p.mbH/2);
       }
-      if(isTate){
-        groups.push({qi,q,
-          mbY: along-p.mbH/2, tmX: tmFix, tmY: tmVary(along),
-          xs: perpCoords});
-      } else {
-        groups.push({qi,q,
-          mbX: along-p.mbW/2, tmX: tmVary(along), tmY: tmFix,
-          ys: perpCoords});
-      }
+      groups.push({qi, q,
+        mbY: getMbY(along),
+        mbX: isTate ? null : along - p.mbW/2,
+        ...makeTM(along),
+        perpCoords});
     }
 
     const fg=groups[0], lg=groups[groups.length-1];
     if(isTate){
-      colLayouts.push({groups,maxCh,
-        frameX1: colPerp-BOX_PAD,
-        frameX2: colPerp+(maxCh-1)*p.pitch+p.mbW+BOX_PAD,
-        frameY1: (fg?fg.mbY:ansStart)-BOX_PAD,
-        frameY2: (lg?lg.mbY+p.mbH:ansStart)+BOX_PAD});
+      colLayouts.push({groups, maxCh,
+        frameX1: colPerpBase-BOX_PAD,
+        frameX2: colPerpBase+(maxCh-1)*p.pitch+p.mbW+BOX_PAD,
+        frameY1: (fg?fg.mbY:getMbY(ansStart))-BOX_PAD,
+        frameY2: (lg?lg.mbY+p.mbH:getMbY(ansStart))+BOX_PAD});
     } else {
-      // 横型: colPerpが最下の選択肢中心、上↑に展開
-      colLayouts.push({groups,maxCh,
-        frameX1: (fg?fg.mbX:ansStart)-BOX_PAD,
-        frameX2: (lg?lg.mbX+p.mbW:ansStart)+BOX_PAD,
-        frameY1: colPerp-(maxCh-1)*p.pitch-p.mbH-BOX_PAD,
-        frameY2: colPerp+BOX_PAD});
+      // 横型: colPerpBase=最下のMB中心y、上↑に展開
+      const yBottom = colPerpBase + p.mbH/2 + BOX_PAD;
+      const yTop    = colPerpBase - (maxCh-1)*p.pitch - p.mbH/2 - BOX_PAD;
+      colLayouts.push({groups, maxCh,
+        frameX1: (fg?fg.mbX:ansStart-p.mbW/2)-BOX_PAD,
+        frameX2: (lg?lg.mbX+p.mbW:ansStart+p.mbW/2)+BOX_PAD,
+        frameY1: yTop,
+        frameY2: yBottom});
     }
   }
 
@@ -622,6 +647,10 @@ function drawAll(r, p){
   r.rect(outer.x1,outer.y1,outer.w,outer.h,{color:[0,0,0],lw:0.3});
 
   // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
   // 受験番号欄
   // ----------------------------------------------------------------
   if(examLayout){
@@ -631,48 +660,59 @@ function drawAll(r, p){
     const digLabels=DLAB.slice(DLAB.length-p.enDigits);
 
     if(isTate){
-      // 縦型: 桁=x方向区切り縦線
-      el.rows[0].xs.forEach((x,di)=>{
+      // 縦型: 桁(perp)=x右→, 数字(along)=y下↓
+      el.rows[0].perpCoords.forEach((px,di)=>{
         if(di>0){
-          const sep=(el.rows[0].xs[di-1]+p.mbW+x)/2;
+          const sep=(el.rows[0].perpCoords[di-1]+p.mbW+px)/2;
           r.line(sep,el.frameY1,sep,el.frameY2,{color:[176,0,80],lw:0.2});
         }
       });
       const entryY=el.frameY1+(el.frameY2-el.frameY1)*0.2;
       r.line(el.frameX1,entryY,el.frameX2,entryY,{color:[176,0,80],lw:0.2});
-      el.rows[0].xs.forEach((x,di)=>{
-        r.text(x+p.mbW/2,el.frameY1+(entryY-el.frameY1)/2,
+      el.rows[0].perpCoords.forEach((px,di)=>{
+        r.text(px+p.mbW/2,el.frameY1+(entryY-el.frameY1)/2,
           digLabels[di]||'',{size:2.2,color:[60,60,60],align:'center'});
       });
       r.text((el.frameX1+el.frameX2)/2,el.frameY1+(entryY-el.frameY1)/2+3,
         '受験番号欄',{size:2.5,color:[20,20,20],align:'center'});
       el.rows.forEach(row=>{
         allTMs.push({x:row.tmX,y:row.tmY});
-        row.xs.forEach(x=>{ r.mb(x,row.mbY,p.mbW,p.mbH,p,String(row.ri)); mbCount++; });
+        row.perpCoords.forEach(px=>{ r.mb(px,row.mbY,p.mbW,p.mbH,p,String(row.ri)); mbCount++; });
         r.text(el.frameX1-0.5,row.mbY+p.mbH/2,String(row.ri),
           {size:2.5,color:[60,60,60],align:'right'});
       });
     } else {
-      // 横型: 桁=y方向区切り横線
-      el.rows[0].ys.forEach((y,di)=>{
+      // 横型: 数字(along)=x右→, 桁(perp)=y上↑
+      // 数字区切り縦線（x方向）
+      el.rows.forEach((row,ri)=>{
+        if(ri>0){
+          const sep=row.mbX - p.pitch/2 + p.mbW/2;
+          r.line(sep,el.frameY1,sep,el.frameY2,{color:[176,0,80],lw:0.2});
+        }
+      });
+      // 桁区切り横線（y方向、perpCoords[0]が最下=y大）
+      el.rows[0].perpCoords.forEach((py,di)=>{
         if(di>0){
-          const sep=(el.rows[0].ys[di-1]+p.mbH+y)/2;
+          const prev=el.rows[0].perpCoords[di-1]; // prev > py（上↑でy減少）
+          const sep=py + p.mbH + (prev - py - p.mbH)/2;
           r.line(el.frameX1,sep,el.frameX2,sep,{color:[176,0,80],lw:0.2});
         }
       });
-      const entryX=el.frameX1+(el.frameX2-el.frameX1)*0.2;
-      r.line(entryX,el.frameY1,entryX,el.frameY2,{color:[176,0,80],lw:0.2});
-      el.rows[0].ys.forEach((y,di)=>{
-        r.text(el.frameX1+(entryX-el.frameX1)/2,y+p.mbH/2,
-          digLabels[di]||'',{size:2.2,color:[60,60,60],align:'center'});
-      });
-      r.text(el.frameX1+(entryX-el.frameX1)/2+3,(el.frameY1+el.frameY2)/2,
+      const entryY=el.frameY1+(el.frameY2-el.frameY1)*0.2;
+      r.line(el.frameX1,entryY,el.frameX2,entryY,{color:[176,0,80],lw:0.2});
+      r.text((el.frameX1+el.frameX2)/2,el.frameY1+(entryY-el.frameY1)/2,
         '受験番号欄',{size:2.5,color:[20,20,20],align:'center'});
+      // 桁ラベル（左端）
+      el.rows[0].perpCoords.forEach((py,di)=>{
+        r.text(el.frameX1-0.5,py+p.mbH/2,
+          digLabels[di]||'',{size:2.2,color:[60,60,60],align:'right'});
+      });
+      // 数字ラベル（上部）
       el.rows.forEach(row=>{
         allTMs.push({x:row.tmX,y:row.tmY});
-        row.ys.forEach(y=>{ r.mb(row.mbX,y,p.mbW,p.mbH,p,String(row.ri)); mbCount++; });
-        r.text(row.mbX+p.mbW/2,el.frameY2+0.5,String(row.ri),
-          {size:2.5,color:[60,60,60],align:'center'});
+        row.perpCoords.forEach(py=>{ r.mb(row.mbX,py,p.mbW,p.mbH,p,String(row.ri)); mbCount++; });
+        r.text(row.mbX+p.mbW/2,el.frameY1+(entryY-el.frameY1)/2+3,
+          String(row.ri),{size:2.5,color:[60,60,60],align:'center'});
       });
     }
   }
@@ -687,7 +727,7 @@ function drawAll(r, p){
       {color:[176,0,80],lw:0.3});
 
     if(isTate){
-      // 縦型: 設問番号列を上部横線で区切り
+      // 縦型: 問番号=左端, 設問区切り=横線, 選択肢番号=上部
       const qSepY=col.frameY1+BOX_PAD+QNUM_COL_W;
       r.line(col.frameX1,qSepY,col.frameX2,qSepY,{color:[176,0,80],lw:0.2});
       r.text((col.frameX1+col.frameX2)/2,col.frameY1+BOX_PAD+QNUM_COL_W/2,
@@ -700,31 +740,38 @@ function drawAll(r, p){
           const sep=grp.mbY-p.pitch/2+p.mbH/2;
           r.line(col.frameX1,sep,col.frameX2,sep,{color:[220,220,220],lw:0.1});
         }
-        grp.xs.forEach((x,ci)=>{
-          r.text(x+p.mbW/2,col.frameY1+BOX_PAD+QNUM_COL_W/2,
+        grp.perpCoords.forEach((px,ci)=>{
+          r.text(px+p.mbW/2,col.frameY1+BOX_PAD+QNUM_COL_W/2,
             String(ci+1),{size:2.2,color:[80,80,80],align:'center'});
         });
-        grp.xs.forEach((x,ci)=>{ r.mb(x,grp.mbY,p.mbW,p.mbH,p,String(ci+1)); mbCount++; });
+        grp.perpCoords.forEach((px,ci)=>{ r.mb(px,grp.mbY,p.mbW,p.mbH,p,String(ci+1)); mbCount++; });
       });
     } else {
-      // 横型: 設問番号列を左部縦線で区切り
-      const qSepX=col.frameX1+BOX_PAD+QNUM_COL_W;
-      r.line(qSepX,col.frameY1,qSepX,col.frameY2,{color:[176,0,80],lw:0.2});
-      r.text(col.frameX1+BOX_PAD+QNUM_COL_W/2,(col.frameY1+col.frameY2)/2,
+      // 横型: 設問(along)=x右→, 選択肢(perp)=y上↑
+      // 問番号=上部(x方向), 選択肢番号=左端(y方向)
+      const qSepY=col.frameY1+BOX_PAD+QNUM_COL_W;
+      r.line(col.frameX1,qSepY,col.frameX2,qSepY,{color:[176,0,80],lw:0.2});
+      r.text((col.frameX1+col.frameX2)/2,col.frameY1+BOX_PAD+QNUM_COL_W/2,
         `${fQ}〜${lQ}`,{size:2.5,color:[20,20,20],align:'center'});
+      // 選択肢番号を左端に（最初のグループで代表）
+      if(col.groups[0]){
+        col.groups[0].perpCoords.forEach((py,ci)=>{
+          r.text(col.frameX1-0.5,py+p.mbH/2,
+            String(ci+1),{size:2.2,color:[80,80,80],align:'right'});
+        });
+      }
       col.groups.forEach(grp=>{
         allTMs.push({x:grp.tmX,y:grp.tmY});
-        r.text(grp.mbX+p.mbW/2,col.frameY2+0.5,String(grp.qi+1),
-          {size:2.5,color:[50,50,50],align:'center'});
+        // 問番号ラベル（上部）
+        r.text(grp.mbX+p.mbW/2,col.frameY1+BOX_PAD+QNUM_COL_W/2,
+          String(grp.qi+1),{size:2.5,color:[50,50,50],align:'center'});
+        // 設問区切り縦線（x方向）
         if(grp.qi>col.groups[0].qi){
           const sep=grp.mbX-p.pitch/2+p.mbW/2;
-          r.line(sep,col.frameY1,sep,col.frameY2,{color:[220,220,220],lw:0.1});
+          r.line(sep,qSepY,sep,col.frameY2,{color:[220,220,220],lw:0.1});
         }
-        grp.ys.forEach((y,ci)=>{
-          r.text(col.frameX1+BOX_PAD+QNUM_COL_W/2,y+p.mbH/2,
-            String(ci+1),{size:2.2,color:[80,80,80],align:'center'});
-        });
-        grp.ys.forEach((y,ci)=>{ r.mb(grp.mbX,y,p.mbW,p.mbH,p,String(ci+1)); mbCount++; });
+        // MB描画: x=mbX(along=x), y=perpCoords(perp=y上↑)
+        grp.perpCoords.forEach((py,ci)=>{ r.mb(grp.mbX,py,p.mbW,p.mbH,p,String(ci+1)); mbCount++; });
       });
     }
   });
