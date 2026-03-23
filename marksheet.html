@@ -128,11 +128,13 @@ input[type=number]:focus,select:focus{border-color:var(--acc);}
     <div class="row"><label>桁数</label><input type="number" id="en-digits" value="6" min="1" max="12" step="1"></div>
     <div class="row"><label>開始Y (mm)</label><input type="number" id="en-start" value="10" min="0" max="200" step="0.5"></div>
   </div>
+    <div class="row"><label>桁 開始MB番号</label><input type="number" id="en-mb-no" value="1" min="1" max="33" step="1"></div>
   <div class="card">
     <div class="ctitle">解答欄</div>
     <div class="row"><label>列数</label><input type="number" id="col-count" value="3" min="1" max="8" step="1"></div>
     <div class="row"><label>列間隔 (mm)</label><input type="number" id="col-gap" value="6" min="2" max="40" step="0.5"></div>
     <div class="row"><label>開始Y (mm)</label><input type="number" id="ans-start" value="38" min="5" max="250" step="0.5"></div>
+    <div class="row"><label>選択肢 開始MB番号</label><input type="number" id="ans-mb-no" value="1" min="1" max="33" step="1"></div>
     <div id="ans-warning" style="display:none;margin:4px 0;padding:6px 8px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);border-radius:3px;font-size:10px;color:#f5a623;line-height:1.5;"></div>
     <div class="divider"></div>
     <div class="qlist" id="qlist"></div>
@@ -400,7 +402,9 @@ function getP(){
     ansStart: parseFloat(document.getElementById('ans-start').value),
     showExamNo: document.querySelector('input[name=examno]:checked').value==='show',
     enDigits: parseInt(document.getElementById('en-digits').value),
-    enStart: parseFloat(document.getElementById('en-start').value),
+    enStart:  parseFloat(document.getElementById('en-start').value),
+    enMbNo:   parseInt(document.getElementById('en-mb-no').value)||1,  // 桁の開始MB番号
+    ansMbNo:  parseInt(document.getElementById('ans-mb-no').value)||1, // 選択肢の開始MB番号
   };
 }
 
@@ -472,8 +476,18 @@ function calcLayout(p, outer){
   // MB固定座標
   // 縦型: MB中心x固定 = outer.x1+firstX（perp方向の起点）
   // 横型: MB中心y固定 = outer.y2-firstX（全MB共通のy）
-  const mbFixX = p.face==='omote' ? outer.x1+p.firstX : outer.x2-p.firstX; // 縦型のMB中心x基準
-  const mbFixY = p.face==='omote' ? outer.y2-p.firstX : outer.y1+p.firstX; // 横型のMB中心y固定値
+  const mbFixX = p.face==='omote' ? outer.x1+p.firstX : outer.x2-p.firstX;
+  const mbFixY = p.face==='omote' ? outer.y2-p.firstX : outer.y1+p.firstX;
+
+  // perp起点（受験番号欄の桁・解答欄の選択肢）
+  // 縦型: enMbNo番目のMB中心x = mbFixX + (enMbNo-1)*pitch
+  // 横型: enMbNo番目のMB中心y = mbFixY - (enMbNo-1)*pitch（上↑方向）
+  const enPerpBase  = isTate
+    ? mbFixX + (p.enMbNo -1)*p.pitch   // 縦型: 右→
+    : mbFixY - (p.enMbNo -1)*p.pitch;  // 横型: 上↑
+  const ansPerpBase = isTate
+    ? mbFixX + (p.ansMbNo-1)*p.pitch   // 縦型: 右→
+    : mbFixY - (p.ansMbNo-1)*p.pitch;  // 横型: 上↑
 
   // TM座標生成
   // 縦型: along=MB中心y, TM_y=along-tmS*1.5, TM_x=固定
@@ -492,13 +506,13 @@ function calcLayout(p, outer){
   }
 
   // perp座標リスト（桁・選択肢）
-  // 縦型: x方向（右→）: mbFixX + di*pitch
-  // 横型: y方向（上↑）: mbFixY - di*pitch
-  function getPerpCoords(basePerp, count){
+  // 縦型: x方向（右→）: base + i*pitch
+  // 横型: y方向（上↑）: base - i*pitch
+  function getPerpCoords(base, count){
     const coords=[];
     for(let i=0;i<count;i++){
-      if(isTate) coords.push(basePerp + i*p.pitch - p.mbW/2);
-      else        coords.push(mbFixY - i*p.pitch - p.mbH/2);
+      if(isTate) coords.push(base + i*p.pitch - p.mbW/2);
+      else        coords.push(base - i*p.pitch - p.mbH/2);
     }
     return coords;
   }
@@ -510,8 +524,8 @@ function calcLayout(p, outer){
   if(p.showExamNo){
     const rows=[];
     for(let ri=0;ri<10;ri++){
-      const along = p.enStart + ri*p.pitch; // along方向（縦型=y, 横型=x）
-      const perpCoords = getPerpCoords(mbFixX, p.enDigits);
+      const along = p.enStart + ri*p.pitch;
+      const perpCoords = getPerpCoords(enPerpBase, p.enDigits);
       rows.push({ri,
         mbY: getMbY(along),
         mbX: isTate ? null : along - p.mbW/2,
@@ -572,10 +586,10 @@ function calcLayout(p, outer){
     const startQ=c*perCol, endQ=Math.min(startQ+perCol,qCount);
     const maxCh=Math.max(...questions.slice(startQ,endQ).map(q=>q.choices),1);
 
-    // 列のperp基準
-    // 縦型: x方向（右→）: colPerpX = mbFixX + オフセット
-    // 横型: y方向（上↑）: colPerpY = mbFixY - オフセット
-    let colPerpBase = isTate ? mbFixX : mbFixY;
+    // 列のperp基準（ansPerpBaseから列オフセット分ずらす）
+    // 縦型: x方向（右→）増加
+    // 横型: y方向（上↑）減少
+    let colPerpBase = ansPerpBase;
     for(let i=0;i<c;i++){
       const mc=Math.max(...questions.slice(i*perCol,Math.min((i+1)*perCol,qCount)).map(q=>q.choices),1);
       if(isTate) colPerpBase += (mc-1)*p.pitch + p.mbW + p.colGap;
@@ -586,16 +600,11 @@ function calcLayout(p, outer){
     for(let qi=startQ;qi<endQ;qi++){
       const q=questions[qi];
       const along = ansStart + (qi-startQ)*p.pitch;
-      const perpCoords=[];
-      for(let ci=0;ci<q.choices;ci++){
-        if(isTate) perpCoords.push(colPerpBase + ci*p.pitch - p.mbW/2);
-        else        perpCoords.push(colPerpBase - ci*p.pitch - p.mbH/2);
-      }
       groups.push({qi, q,
         mbY: getMbY(along),
         mbX: isTate ? null : along - p.mbW/2,
         ...makeTM(along),
-        perpCoords});
+        perpCoords: getPerpCoords(colPerpBase, q.choices)});
     }
 
     const fg=groups[0], lg=groups[groups.length-1];
@@ -902,7 +911,7 @@ document.querySelectorAll('input[name=pitch]').forEach(r=>r.addEventListener('ch
   document.getElementById('inf-tmpos').textContent=d.tmPos+' mm';
   renderPreview();
 }));
-['mb-s','mb-l','col-count','col-gap','ans-start','en-digits','en-start'].forEach(id=>{
+['mb-s','mb-l','col-count','col-gap','ans-start','en-digits','en-start','en-mb-no','ans-mb-no'].forEach(id=>{
   const el=document.getElementById(id);
   el.addEventListener('change',renderPreview); el.addEventListener('input',renderPreview);
 });
