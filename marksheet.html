@@ -39,11 +39,14 @@
     <label>選択肢数:     <input id="choiceCount"   type="number" value="5"  min="1" max="10" style="width:50px"></label>
   </div>
   <div class="row">
-    <label>開始MB番号（縦型:解答欄開始along位置/横型:問1の物理MB番号）:
-      <input id="startMB" type="number" value="24" min="1" max="48" style="width:55px">
+    <label>開始オフセット・縦型のみ（perp方向にMBいくつぶん空けるか）:
+      <input id="skipMB" type="number" value="2" min="0" max="31" style="width:55px">
     </label>
     <label>列間隔(pitch×):
       <input id="columnGapMult" type="number" value="2" min="0" max="10" step="0.5" style="width:50px">
+    </label>
+    <label>TM間隔(mm):
+      <input id="tmInterval" type="number" value="4.23" min="4.23" max="20" step="0.01" style="width:60px">
     </label>
     <label>セクション間隔(pitch×):
       <input id="sectionGapMult" type="number" value="2" min="0" max="10" step="0.5" style="width:50px">
@@ -113,7 +116,7 @@
 
     // ── 受験番号欄 ───────────────────────────────────────────────
     function calcExamArea(params) {
-      const { orientation, pitchName, examDigits, enStart, startMB } = params;
+      const { orientation, pitchName, examDigits, enStart, skipMB, tmInterval } = params;
       const pm = PITCH_MASTER[pitchName];
       const outer = getOuter(orientation);
       const tms = [], mbs = [], tmSet = new Set();
@@ -122,48 +125,53 @@
         // 数字0〜9=along（下↓）, 桁=perp（右→）
         // 数字ri: cy = enStart + ri * pitch（0が上、9が下）
         // 桁di:   cx = outer.x1 + firstX + di * pitch（左から右）
+        // 縦型受験番号: perp（右→）方向にskipMB個空けて開始
         for (let di = 0; di < examDigits; di++) {
-          const cx = outer.x1 + pm.firstX + di * pm.pitch;
+          const cx = outer.x1 + pm.firstX + (skipMB + di) * pm.pitch;  // perp（右→）= pitch
           for (let ri = 0; ri <= 9; ri++) {
-            const cy = enStart + ri * pm.pitch;
-            if (!tmSet.has(cy)) { tmSet.add(cy); tms.push(calcTM(orientation, pm, cy)); }
+            const cy    = enStart + ri * tmInterval;  // along（下↓）= tmInterval（MB位置）
+            const tmPos = enStart + ri * tmInterval;  // along（下↓）= tmInterval（TM位置）
+            if (!tmSet.has(tmPos)) { tmSet.add(tmPos); tms.push(calcTM(orientation, pm, tmPos)); }
             mbs.push({ cx, cy, rL: MB_L/2, rS: MB_S/2, axis:'h', digit:di, num:ri, label:String(ri) });
           }
         }
         // 枠: examDigits桁 × 数字0〜9
-        const x1 = outer.x1 + pm.firstX - MB_L/2 - PAD;
+        const x1 = outer.x1 + pm.firstX + skipMB*pm.pitch - MB_L/2 - PAD;
         const y1 = enStart - MB_S/2 - PAD;
-        const x2 = outer.x1 + pm.firstX + (examDigits-1)*pm.pitch + MB_L/2 + PAD;
-        const y2 = enStart + 9*pm.pitch + MB_S/2 + PAD;
-        return { tms, mbs, examEnd: enStart + 9*pm.pitch,
+        const x2 = outer.x1 + pm.firstX + (skipMB + examDigits-1)*pm.pitch + MB_L/2 + PAD;
+        const y2 = enStart + 9*tmInterval + MB_S/2 + PAD;
+        return { tms, mbs, examEnd: enStart + 9*tmInterval,
                  frame: { x:x1, y:y1, w:x2-x1, h:y2-y1 } };
 
       } else {
         // 横型: 桁=along（右→）, 数字0〜9=perp（下↓）
         // 受験番号欄の上端 = 解答欄のansStartY（問1のy）に合わせる
         // ansStartY = outer.y2 - firstX - (startMB-1)*pitch（startMB=24）
-        const examTopY = outer.y2 - pm.firstX - (startMB - 1) * pm.pitch; // 解答欄の問1と同じy
+        // 横型受験番号: 解答欄と同じく第30MB位置から開始（固定）
+        const LANDSCAPE_START_MB = 30;
+        const examTopY = outer.y2 - pm.firstX - (LANDSCAPE_START_MB - 1) * pm.pitch;
         // 数字0が上（examTopY）、9が下（examTopY + 9*pitch）
         for (let di = 0; di < examDigits; di++) {
-          const cx = enStart + di * pm.pitch;
-          if (!tmSet.has(cx)) { tmSet.add(cx); tms.push(calcTM(orientation, pm, cx)); }
+          const cx    = enStart + di * tmInterval;  // along（右→）= tmInterval（MB位置）
+          const tmPos = enStart + di * tmInterval;  // along（右→）= tmInterval（TM位置）
+          if (!tmSet.has(tmPos)) { tmSet.add(tmPos); tms.push(calcTM(orientation, pm, tmPos)); }
           for (let ri = 0; ri <= 9; ri++) {
-            const cy = examTopY + ri * pm.pitch;
+            const cy = examTopY + ri * pm.pitch;  // perp（下↓）= pitch
             mbs.push({ cx, cy, rL: MB_L/2, rS: MB_S/2, axis:'v', digit:di, num:ri, label:String(ri) });
           }
         }
         const x1 = enStart - MB_S/2 - PAD;
         const y1 = examTopY - MB_L/2 - PAD;
-        const x2 = enStart + (examDigits-1)*pm.pitch + MB_S/2 + PAD;
+        const x2 = enStart + (examDigits-1)*tmInterval + MB_S/2 + PAD;
         const y2 = examTopY + 9*pm.pitch + MB_L/2 + PAD;
-        return { tms, mbs, examEnd: enStart + (examDigits-1)*pm.pitch,
+        return { tms, mbs, examEnd: enStart + (examDigits-1)*tmInterval,
                  frame: { x:x1, y:y1, w:x2-x1, h:y2-y1 } };
       }
     }
 
     // ── 解答欄 ───────────────────────────────────────────────────
     function calcAnswerArea(params, examEnd) {
-      const { orientation, pitchName, questionCount, choiceCount, sectionGap, columnGap, startMB } = params;
+      const { orientation, pitchName, questionCount, choiceCount, sectionGap, columnGap, skipMB, tmInterval } = params;
       const pm = PITCH_MASTER[pitchName];
       const outer = getOuter(orientation);
       const ansStart = examEnd + sectionGap;
@@ -175,21 +183,21 @@
         // 縦型: startMBはalong方向で「第startMB TM」から解答を開始する
         // 第nTMのy = outer.y1 + firstX + (n-1)*pitch
         // ansStartYはexamEnd+sectionGapとstartMBによる位置の大きい方を採用
-        const startMBY = outer.y1 + pm.firstX + (startMB - 1) * pm.pitch;
-        const ansStartY = Math.max(ansStart, startMBY);
+        const ansStartY = ansStart;
         const availAlong = outer.y2 - ansStartY;
-        const qPerCol = Math.max(1, Math.floor(availAlong / pm.pitch + 1e-9));
+        const qPerCol = Math.max(1, Math.floor(availAlong / tmInterval + 1e-9));
         let qi = 0, colIndex = 0;
 
         while (qi < questionCount) {
-          const colBaseX = outer.x1 + pm.firstX + colIndex * (choiceCount * pm.pitch + columnGap);
+          const colBaseX = outer.x1 + pm.firstX + skipMB * pm.pitch + colIndex * (choiceCount * pm.pitch + columnGap);
           const colStartQi = qi;
 
           for (let inCol = 0; inCol < qPerCol && qi < questionCount; inCol++, qi++) {
-            const cy = ansStartY + inCol * pm.pitch;
-            if (!tmSet.has(cy)) {
-              tmSet.add(cy);
-              tms.push({ ...calcTM(orientation, pm, cy), x: outer.x1 + pm.tmPos });
+            const cy    = ansStartY + inCol * tmInterval;  // along（下↓）= tmInterval
+            const tmPos = ansStartY + inCol * tmInterval;  // along（下↓）= tmInterval
+            if (!tmSet.has(tmPos)) {
+              tmSet.add(tmPos);
+              tms.push({ ...calcTM(orientation, pm, tmPos), x: outer.x1 + pm.tmPos });
             }
             for (let ci = 0; ci < choiceCount; ci++) {
               const cx = colBaseX + ci * pm.pitch;
@@ -201,8 +209,8 @@
           const colEndQi = qi - 1;
           const fx1 = colBaseX - MB_L/2 - PAD;
           const fy1 = ansStartY - MB_S/2 - PAD;
-          const fx2 = colBaseX + (choiceCount-1)*pm.pitch + MB_L/2 + PAD;
-          const fy2 = ansStartY + (colEndQi - colStartQi)*pm.pitch + MB_S/2 + PAD;
+          const fx2 = colBaseX + (choiceCount-1)*pm.pitch + MB_L/2 + PAD;  // perp（右→）= pitch
+          const fy2 = ansStartY + (colEndQi - colStartQi)*tmInterval + MB_S/2 + PAD;  // along（下↓）= tmInterval
           frames.push({ x:fx1, y:fy1, w:fx2-fx1, h:fy2-fy1 });
           colIndex++;
         }
@@ -223,24 +231,27 @@
         //   → 問1のy = outer.y2 - firstX - (startMB-1)*pitch
         //   → 問mのy = 問1のy + (m-1)*pitch
 
-        const ansStartY = outer.y2 - pm.firstX - (startMB - 1) * pm.pitch; // 問1のy（第startMB）
+        // 横型: 第30MB位置から開始（固定）
+        // 第30MBのy = outer.y2 - firstX - 29*pitch
+        const LANDSCAPE_START_MB = 30;
+        const ansStartY = outer.y2 - pm.firstX - (LANDSCAPE_START_MB - 1) * pm.pitch;
         const qPerCol = Math.max(1, Math.floor((outer.y2 - ansStartY) / pm.pitch + 1e-9));
 
         let qi = 0, colIndex = 0;
 
         while (qi < questionCount) {
           // 列のx起点: 選択肢1（ci=0）のx
-          const colBaseX = ansStart + colIndex * choiceCount * pm.pitch;
+          const colBaseX = ansStart + colIndex * choiceCount * tmInterval;  // along（右→）= tmInterval
           const colStartQi = qi;
 
           for (let inCol = 0; inCol < qPerCol && qi < questionCount; inCol++, qi++) {
             // 問題番号 → perp（下↓、y増加）: 問1のyから下へ
-            const cy = ansStartY + inCol * pm.pitch;
+            const cy = ansStartY + inCol * pm.pitch;  // perp（下↓）= pitch
 
             for (let ci = 0; ci < choiceCount; ci++) {
-              // 選択肢 → along（右→）: 同じyでxのみ増加
-              const cx = colBaseX + ci * pm.pitch;
-              if (!tmSet.has(cx)) { tmSet.add(cx); tms.push(calcTM(orientation, pm, cx)); }
+              const cx    = colBaseX + ci * tmInterval;  // along（右→）= tmInterval（MB位置）
+              const tmPos = colBaseX + ci * tmInterval;  // along（右→）= tmInterval（TM位置）
+              if (!tmSet.has(tmPos)) { tmSet.add(tmPos); tms.push(calcTM(orientation, pm, tmPos)); }
               mbs.push({ cx, cy, rL:MB_L/2, rS:MB_S/2, axis:'v',
                          question:qi+1, choice:ci+1, label:String(ci+1) });
             }
@@ -249,8 +260,8 @@
           const qInCol = qi - colStartQi;
           const fx1 = colBaseX - MB_S/2 - PAD;
           const fy1 = ansStartY - MB_L/2 - PAD;
-          const fx2 = colBaseX + (choiceCount - 1) * pm.pitch + MB_S/2 + PAD;
-          const fy2 = ansStartY + (qInCol - 1) * pm.pitch + MB_L/2 + PAD;
+          const fx2 = colBaseX + (choiceCount - 1) * tmInterval + MB_S/2 + PAD;  // along（右→）= tmInterval
+          const fy2 = ansStartY + (qInCol - 1) * pm.pitch + MB_L/2 + PAD;  // perp（下↓）= pitch
           frames.push({ x:fx1, y:fy1, w:fx2-fx1, h:fy2-fy1 });
           colIndex++;
         }
@@ -260,15 +271,21 @@
     }
 
     // ── オーバーフローチェック ──────────────────────────────────
+    const TM_MIN_INTERVAL = 4.23;
+
     function checkOverflow(params, exam) {
       const pm = PITCH_MASTER[params.pitchName];
       const outer = getOuter(params.orientation);
       const warns = [];
 
+      // TM間隔の最小値チェック
+      if (params.tmInterval < TM_MIN_INTERVAL)
+        warns.push('TM間隔が最小値未満です (' + params.tmInterval.toFixed(3) + 'mm < ' + TM_MIN_INTERVAL + 'mm)');
+
       if (params.orientation === 'landscape') {
         // 横型: 受験番号欄の数字9がperp（下↓）方向で外枠内か確認
         const startMB = params.startMB;
-        const examTopY = outer.y2 - pm.firstX - (startMB - 1) * pm.pitch;
+        const examTopY = outer.y2 - pm.firstX - 29 * pm.pitch; // 第30MB固定
         const examBottomY = examTopY + 9 * pm.pitch;
         if (examBottomY > outer.y2)
           warns.push('受験番号欄の数字9が外枠外にはみ出しています (' + examBottomY.toFixed(2) + 'mm > ' + outer.y2 + 'mm)');
@@ -406,16 +423,18 @@
       const choiceCount   = parseInt(document.getElementById('choiceCount').value);
       const pm = PITCH_MASTER[pitchName];
 
-      const startMB        = parseInt(document.getElementById('startMB').value) || 24;
+      const skipMB         = parseInt(document.getElementById('skipMB').value) || 2;
       const columnGapMult  = parseFloat(document.getElementById('columnGapMult').value) || 2;
       const sectionGapMult = parseFloat(document.getElementById('sectionGapMult').value) || 2;
+      const tmInterval     = parseFloat(document.getElementById('tmInterval').value) || 4.23;
 
       const params = {
         orientation, pitchName, examDigits, questionCount, choiceCount,
-        enStart:    pm.firstX + pm.pitch * 3,
+        enStart:    pm.firstX + tmInterval * 3,  // along方向の第4TM位置
         sectionGap: pm.pitch * sectionGapMult,
         columnGap:  pm.pitch * columnGapMult,
-        startMB,
+        tmInterval,
+        skipMB,
       };
 
       let text = '';
@@ -430,6 +449,9 @@
         log('  問題数       : ' + questionCount);
         log('  選択肢数     : ' + choiceCount);
         log('  enStart      : ' + params.enStart.toFixed(3) + 'mm');
+        log('  TM間隔       : ' + params.tmInterval.toFixed(3) + 'mm');
+        log('  開始オフセット: ' + params.skipMB + '個ぶん空ける');
+        log('  sectionGap   : ' + params.sectionGap.toFixed(3) + 'mm');
         log();
         log('=== 受験番号欄 ===');
         log('  TM数    : ' + r.exam.tms.length);
