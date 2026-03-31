@@ -1,7 +1,7 @@
 # マークシート生成ツール 仕様書
 
 **対象機器:** セコニック SR-3500  
-**出力:** B4アートボード上にA4中央配置のPDF  
+**出力:** B4アートボード上にA4中央配置のプレビュー（Canvas描画）  
 **対応向き:** 縦型A4 / 横型A4  
 **対応ピッチ:** 0.25 / 1/6 / 0.2 / 0.2s / 0.3 / 0.3F
 
@@ -20,7 +20,7 @@
 | 外枠 | outer | A4サイズの印刷領域枠（マージンなし）。座標計算の基準。 |
 | 物理MB番号 | - | スキャナー基準のMB番号。TM配置辺（基準辺）に最も近いMBが第1MB。 |
 | 論理問題番号 | - | 受験者が読む問題の順番。シートの上側または左側から問1となる。 |
-| 開始オフセット | skipMB | **縦型専用。** perp方向にMBを何個ぶん空けてから開始するか。 |
+| 開始オフセット | skipMB | MBを何個ぶん空けてから開始するか。縦型・横型ともに有効。 |
 
 ---
 
@@ -116,12 +116,12 @@ A4外枠はB4アートボードの中央に配置する。オフセット＝(B4�
 
 ### 6.2 MB（マークボックス）
 
-標準サイズ: **長辺4mm × 短辺2mm**。塗りなし・マゼンタ線の楕円形。
+標準サイズ: **長辺4mm × 短辺2mm**（MB_LONG=4, MB_SHORT=2）。塗りなし・マゼンタ線の楕円形。
 
 | | 縦型 | 横型 |
 |---|---|---|
-| along方向の寸法（mbS） | 2mm（短辺） | 2mm（短辺） |
-| perp方向の寸法（mbL） | 4mm（長辺） | 4mm（長辺） |
+| along方向の寸法 | MB_SHORT = 2mm | MB_SHORT = 2mm |
+| perp方向の寸法 | MB_LONG = 4mm | MB_LONG = 4mm |
 | 形状 | 横長の楕円 | 縦長の楕円 |
 
 ---
@@ -131,8 +131,8 @@ A4外枠はB4アートボードの中央に配置する。オフセット＝(B4�
 スキャナーはTMを検出した後、along方向に `tmS × 1.5` 進んだ位置でMBを読み取る。
 
 ```
-縦型: MB中心y = TM上端y + tmS × 1.5    （along=下↓方向にずれる）
-横型: MB中心x = TM左端x + tmS × 1.5    （along=右→方向にずれる）
+縦型: MB中心y = TM上端y + tmS × 1.5
+横型: MB中心x = TM左端x + tmS × 1.5
 ```
 
 **TM配置座標:**
@@ -154,7 +154,7 @@ A4外枠はB4アートボードの中央に配置する。オフセット＝(B4�
 横型: 第1MBのy = outer.y2 - firstX
 ```
 
-TMの最小間隔（along方向、上端から次の上端まで）: **4.23mm**
+TMの最小間隔（along方向）: **4.23mm**
 
 ---
 
@@ -169,17 +169,8 @@ TM─── 第1MB 第2MB 第3MB 第4MB 第5MB ───→ perp（右→・pitc
 │     選択肢1 選択肢2 選択肢3 選択肢4 選択肢5
 TM───  （問2）
 │
-↓ along（下↓）＝TM番号増加方向＝問題番号増加方向（tmInterval間隔）
+↓ along（下↓）＝問題番号増加方向（tmInterval間隔）
 ```
-
-| 要素 | 方向 | 間隔 | 備考 |
-|---|---|---|---|
-| TM番号 | along（下↓） | tmInterval | 第1TM→第2TM→... |
-| 問題番号 | along（下↓） | tmInterval | 問1→問2→... TMと同方向 |
-| MB番号 | perp（右→） | pitch | 第1MB→第2MB→... |
-| 選択肢番号 | perp（右→） | pitch | 選択肢1→2→... MBと同方向 |
-
-縦型では**すべての番号が同方向で逆転が発生しない**。
 
 ### 8.2 横型（問題番号とMB番号が逆方向）
 
@@ -187,37 +178,40 @@ TM───  （問2）
 outer.y1=0（上辺）
 ↑
 第30MB（問1）─ 選択肢1 選択肢2 選択肢3 ──→ along（右→・tmInterval間隔）
-第29MB（問2）─ 選択肢1 選択肢2 選択肢3
+第29MB（問2）─
 ...
-第2MB（問29）─ 選択肢1 選択肢2 選択肢3
-第1MB（問30）─ 選択肢1 選択肢2 選択肢3
+第1MB（問30）─
 outer.y2=210mm（下辺・TM配置辺）
-TM    TM    TM    ──→ along（右→）
+TM    TM    TM    ──→
 ```
-
-| 要素 | 方向 | 間隔 | 備考 |
-|---|---|---|---|
-| TM番号 | along（右→） | tmInterval | 第1TM→第2TM→... |
-| 選択肢番号 | along（右→） | tmInterval | 選択肢1→2→... TMと同方向 |
-| MB番号 | perp（上↑、y減少） | pitch | 第1MB=下辺最寄り |
-| 問題番号 | perp（下↓、y増加） | pitch | 問1=上側（第30MB位置） |
 
 横型では**MB番号の増加方向（上↑）と問題番号の増加方向（下↓）が逆転する**。
 
-**座標の対応:**
+---
+
+## 9. along方向の両端余白
+
+外枠端からMB/TMの**端**まで **9mm** を確保する（縦型=上下、横型=左右）。
+
+along方向のMBサイズは MB_SHORT = 2mm なので、MB中心への換算:
 
 ```
-第nMBのy = outer.y2 - firstX - (n-1) × pitch   （上↑、y減少）
-問mのy   = ansStartY + (m-1) × pitch             （下↓、y増加）
-
-横型固定値: ansStartY = outer.y2 - firstX - 29 × pitch（第30MB位置）
+enStart（開始側MB中心） = 9 + MB_SHORT / 2 = 10mm
+終端側MB中心の上限     = outer端 - 9 - MB_SHORT / 2 = outer端 - 10mm
 ```
+
+| | 開始側MB中心 | 終端側MB中心の上限 |
+|---|---|---|
+| 縦型（上下） | outer.y1 + 10mm | outer.y2 - 10mm |
+| 横型（左右） | outer.x1 + 10mm | outer.x2 - 10mm |
+
+**enStart = 10mm** は受験番号欄・解答欄で共通のalong方向開始基準。
 
 ---
 
-## 9. 解答欄レイアウト
+## 10. 解答欄レイアウト
 
-### 9.1 座標計算
+### 10.1 座標計算
 
 **縦型:**
 
@@ -227,9 +221,8 @@ TM    TM    TM    ──→ along（右→）
 
 選択肢ci（perp=右→、pitch間隔）:
   MB中心x = colBaseX + ci × pitch
-  colBaseX = outer.x1 + firstX + skipMB×pitch + colIndex×(choiceCount×pitch + columnGap)
-
-列折返し: colBaseXをperp（右→）方向に増加
+  colBaseX = outer.x1 + firstX + skipMB×pitch
+             + colIndex × ((choiceCount-1)×pitch + columnGap)
 ```
 
 **横型:**
@@ -237,90 +230,106 @@ TM    TM    TM    ──→ along（右→）
 ```
 選択肢ci（along=右→、tmInterval間隔）:
   MB中心x = colBaseX + ci × tmInterval
-  colBaseX = ansStart + colIndex × choiceCount × tmInterval
+  colBaseX = ansStart + colIndex × ((choiceCount-1)×tmInterval + columnGap)
 
 問題番号qi（perp=下↓、pitch間隔）:
   MB中心y = ansStartY + qi × pitch
   ansStartY = outer.y2 - firstX - 29 × pitch（第30MB位置・固定）
 
-列折返し: colBaseXをalong（右→）方向に増加
+1列あたりの最大行数: 30 - skipMB
 ```
 
-### 9.2 ユーザー設定
+### 10.2 skipMBの効果
 
-| パラメータ | 初期値 | 説明 |
-|---|---|---|
-| questionCount | 50 | 問題数 |
-| choiceCount | 5 | 選択肢数 |
-| skipMB | 2 | 【縦型専用】perp方向にMBいくつぶん空けて開始するか |
-| columnGap | pitch × 2 | 列折返し時の間隔 |
-| sectionGap | pitch × 2 | 受験番号欄と解答欄の間隔 |
+| 向き | skipMB=0 | skipMB=2 | skipMB=4 |
+|---|---|---|---|
+| 縦型 | 第1MBから開始（perp方向） | 第3MBから開始 | 第5MBから開始 |
+| 横型 | 第1〜第30MB全使用（30行） | 第3〜第30MB使用（28行） | 第5〜第30MB使用（26行） |
+
+横型は `ansStartY`（第30MB位置）を固定し、`maxRowsPerCol = 30 - skipMB` で行数を制限する。
 
 ---
 
-## 10. 受験番号欄レイアウト
+## 11. 受験番号欄レイアウト
 
-### 10.1 縦型
+### 11.1 縦型
 
 ```
 数字0〜9（along=下↓、tmInterval間隔）:
-  MB中心y = enStart + ri × tmInterval    （ri=0〜9、0が上・9が下）
+  MB中心y = enStart + ri × tmInterval    （ri=0〜9）
 
 桁（perp=右→、pitch間隔）:
   MB中心x = outer.x1 + firstX + (skipMB + di) × pitch    （di=0〜examDigits-1）
 ```
 
-### 10.2 横型
+### 11.2 横型
 
 ```
 桁（along=右→、tmInterval間隔）:
   MB中心x = enStart + di × tmInterval    （di=0〜examDigits-1）
 
 数字0〜9（perp=下↓、pitch間隔）:
-  MB中心y = examTopY + ri × pitch    （ri=0〜9、0が上・9が下）
-  examTopY = outer.y2 - firstX - 29 × pitch（第30MB位置・解答欄と同じ・固定）
+  MB中心y = examTopY + ri × pitch    （ri=0〜9）
+  examTopY = outer.y2 - firstX - 29 × pitch（第30MB位置・固定）
 ```
-
-### 10.3 ユーザー設定
-
-| パラメータ | 初期値 | 説明 |
-|---|---|---|
-| examDigits | 5 | 受験番号の桁数 |
-| enStart | firstX + tmInterval × 3 | 受験番号欄の先頭TM位置（along方向の第4TM） |
-
-> **enStartについて:** SR-3500では第1TMは通常使用しない慣習がある。また第2・第3TM付近は印字領域として確保することを考慮し、デフォルトは第4TM（index=3）とする。
 
 ---
 
-## 11. テキスト要素
+## 12. ギャップ（間隔）仕様
 
-### 11.1 MB内の数値（選択肢番号・受験番号の数字）
+値=N のとき TM/pitch N個分のインターバルとなる（値=0で間隔なし）。  
+ギャップ値はMB中心間距離として計算式に直接加算される。
 
-各MBの内部中央に数値を印字する。
+| パラメータ | 縦型 | 横型 |
+|---|---|---|
+| 列ギャップ（columnGap） | 値 × **pitch** | 値 × **tmInterval** |
+| セクションギャップ（sectionGap） | 値 × **tmInterval** | 値 × **tmInterval** |
+
+**適用箇所:**
+
+```
+縦型:
+  sectionGap = sectionGapMult × tmInterval
+  columnGap  = columnGapMult  × pitch
+  ansStartY  = enEndY + sectionGap
+  colBaseX   = baseX + colIndex × ((choiceCount-1)×pitch + columnGap)
+
+横型:
+  sectionGap = sectionGapMult × tmInterval
+  columnGap  = columnGapMult  × tmInterval
+  ansStart   = examEndX + sectionGap
+  colBaseX   = ansStart + colIndex × ((choiceCount-1)×tmInterval + columnGap)
+```
+
+---
+
+## 13. テキスト要素
+
+### 13.1 MB内の数値（選択肢番号・受験番号の数字）
 
 | 項目 | 値 |
 |---|---|
 | 色 | マゼンタ（ドロップアウトカラー） |
-| サイズ | MBの短辺に合わせたサイズ × 2 |
-| 目的 | スキャナーにはドロップアウトされ、受験者の視認のみに使用 |
+| フォント | IBM Plex Mono |
+| サイズ | `MB_SHORT × 1.25` をmm→px換算 |
+| 配置 | MB中心 |
 
-### 11.2 問題番号
-
-各問の選択肢1のMB左側に横書きで表示。
+### 13.2 問題番号ラベル
 
 | 項目 | 値 |
 |---|---|
 | 色 | マゼンタ |
-| サイズ | MB内テキストと同等 |
-| 位置 | 選択肢1のMB左端から左側 |
+| フォント | Noto Sans JP |
+| サイズ | `MB_SHORT × 1.5` をmm→px換算 |
+| 位置 | 選択肢1のMB左端より左側 0.5mm オフセット、右揃え |
 
-### 11.3 桁ラベル（百位・十位…）
+### 13.3 桁ラベル
 
-**不要。** MBのみ描画する。
+不要。MBのみ描画する。
 
 ---
 
-## 12. 枠の描画
+## 14. 枠の描画
 
 受験番号欄・解答欄それぞれにマゼンタの実線矩形を描画する。
 
@@ -328,88 +337,87 @@ TM    TM    TM    ──→ along（右→）
 |---|---|
 | 色 | マゼンタ |
 | 線種 | 実線 |
-| パディング | 2mm（MBの端から枠線まで） |
+| パディング(PAD) | 2mm（MBの端から枠線まで） |
 
 ---
 
-## 13. セクション配置
+## 15. セクション配置
 
 along方向の先頭から「受験番号欄 → 解答欄」の順に固定。
 
-**受験番号欄と解答欄の間隔:** `sectionGap = pitch × sectionGapMult`
-
-**重なり防止チェック:**
-
 ```
-縦型: 受験番号欄終端y < 解答欄開始y
-横型: 受験番号欄終端x < 解答欄開始x
+縦型: 受験番号欄（y方向）→ sectionGap → 解答欄（y方向）
+横型: 受験番号欄（x方向）→ sectionGap → 解答欄（x方向）
 ```
 
 ---
 
-## 14. TM重複排除
+## 16. TM重複排除
 
-受験番号欄と解答欄の境界付近でTMが重なる場合、along方向の座標が同じTMは1個のみ描画する。
+`tmAlongPositions`（Set）にalong座標を収集し、一括描画することで同座標のTMを自動排除する。
 
 ---
 
-## 15. バリデーション・警告
-
-以下の条件に該当する場合、計算結果エリアに警告を表示する（PDF生成は行わない）。
+## 17. バリデーション・警告
 
 | 条件 | 警告内容 |
 |---|---|
 | tmInterval < 4.23mm | TM間隔が最小値未満 |
 | 横型受験番号欄の数字9が外枠外 | 受験番号欄がはみ出す |
-| 受験番号欄と解答欄が重なる | セクションが重複 |
 
 ---
 
-## 16. ユーザー入力パラメータ一覧
+## 18. ユーザー入力パラメータ一覧
 
-| パラメータ | 初期値 | 対象 | 説明 |
-|---|---|---|---|
-| orientation | 縦型 | 両方 | シートの向き（縦型 / 横型） |
-| pitchName | 0.25 | 両方 | ピッチ種別（ピッチマスター参照） |
-| examDigits | 5 | 両方 | 受験番号の桁数 |
-| questionCount | 50 | 両方 | 問題数 |
-| choiceCount | 5 | 両方 | 選択肢数 |
-| tmInterval | 4.23mm | 両方 | TM間隔（along方向）。最小値4.23mm |
-| skipMB | 2 | **縦型のみ** | perp方向にMBいくつぶん空けて開始するか |
-| columnGap | pitch × 2 | 両方 | 解答欄の列折返し間隔（pitch倍数で指定） |
-| sectionGapMult | 2 | 両方 | 受験番号欄〜解答欄の間隔（pitch倍数で指定） |
+| パラメータ | 初期値 | 説明 |
+|---|---|---|
+| orientation | 縦型 | シートの向き（縦型 / 横型） |
+| pitchName | 0.25 | ピッチ種別（ピッチマスター参照） |
+| tmInterval | 4.23mm | TM間隔（along方向）。最小値4.23mm |
+| examDigits | 5 | 受験番号の桁数 |
+| questionCount | 50 | 問題数 |
+| choiceCount | 5 | 選択肢数 |
+| skipMB | 2 | MBをいくつぶん空けて開始するか（縦型・横型ともに有効） |
+| columnGapMult | 2 | 列ギャップの倍数（縦型=pitch×、横型=tmInterval×） |
+| sectionGapMult | 2 | セクションギャップの倍数（縦型・横型ともにtmInterval×） |
 
 **固定値（変更不可）:**
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| 横型 解答欄開始MB | 第30MB | `ansStartY = outer.y2 - firstX - 29×pitch` |
-| 横型 受験番号欄開始MB | 第30MB | 解答欄と同じ位置 |
-| enStart | firstX + tmInterval × 3 | along方向の第4TM位置 |
+| enStart | 10mm | along方向の開始位置（外枠端からMB端9mm + MB_SHORT/2） |
+| 両端余白(MARGIN) | 9mm | 外枠端からMB/TM端までの距離 |
+| 横型 ansStartY | outer.y2 - firstX - 29×pitch | 第30MB位置（問1の上端・固定） |
+| 横型 examTopY | ansStartY と同じ | 受験番号欄の上端 |
+| 横型 maxRowsPerCol | 30 - skipMB | 1列あたりの最大行数 |
+| MB_LONG | 4mm | MBの長辺 |
+| MB_SHORT | 2mm | MBの短辺 |
+| PAD | 2mm | MBの端から枠線まで |
 
 ---
 
-## 17. 座標計算例（ピッチ 0.25、tmInterval=4.23mm）
+## 19. 座標計算例（ピッチ 0.25、tmInterval=4.23mm、skipMB=2）
 
-### 縦型（outer: x1=0, y1=0, x2=210, y2=297、skipMB=2）
+### 縦型（outer: x1=0, y1=0, x2=210, y2=297）
 
 ```
 pitch=6.35mm、firstX=6.35mm、tmS=0.89mm、tmL=5.9mm、tmPos=-2.0mm
 
-TM左端x（固定） = 0 + (-2.0) = -2.0mm  ※外枠左辺より2mm外側
-第1MBのx       = 0 + 6.35 = 6.35mm
-enStart         = 6.35 + 4.23×3 = 19.04mm（along方向・第4TM位置）
+enStart = 10mm
+TM左端x = 0 + (-2.0) = -2.0mm（外枠外）
 
 受験番号欄:
-  桁di=0のx = 6.35 + (2+0)×6.35 = 19.05mm（perp・skipMB=2個空け）
-  桁di=1のx = 6.35 + (2+1)×6.35 = 25.40mm
-  数字ri=0のy = 19.04mm（along・tmInterval間隔）
-  数字ri=1のy = 19.04 + 4.23 = 23.27mm
+  数字ri=0のy = 10mm
+  数字ri=9のy = 10 + 9×4.23 = 48.07mm
+  桁di=0のx = 6.35 + 2×6.35 = 19.05mm（skipMB=2）
+  桁di=1のx = 6.35 + 3×6.35 = 25.40mm
 
-解答欄:
-  ansStartY = 19.04 + 9×4.23 + 6.35×2 = 72.81mm（examEnd + sectionGap）
-  問1 y = 72.81mm、問2 y = 72.81 + 4.23 = 77.04mm（along）
-  選択肢1 x = 19.05mm、選択肢2 x = 19.05 + 6.35 = 25.40mm（perp）
+解答欄（sectionGapMult=2）:
+  sectionGap = 2×4.23 = 8.46mm
+  ansStartY = 48.07 + 8.46 = 56.53mm
+  下端MB中心の上限 = 297 - 10 = 287mm
+  列ギャップ（columnGapMult=2）= 2×6.35 = 12.70mm
+  選択肢1 x = 19.05mm、選択肢2 x = 25.40mm
 ```
 
 ### 横型（outer: x1=0, y1=0, x2=297, y2=210）
@@ -417,27 +425,26 @@ enStart         = 6.35 + 4.23×3 = 19.04mm（along方向・第4TM位置）
 ```
 pitch=6.35mm、firstX=6.35mm、tmS=0.89mm、tmL=5.9mm、tmPos=-2.0mm
 
-TM上端y（固定） = 210 - (-2.0) - 5.9 = 206.1mm  ※外枠下辺より2mm外側
-第1MBのy       = 210 - 6.35 = 203.65mm（下辺最寄り）
-第30MBのy      = 210 - 6.35 - 29×6.35 = 19.50mm（開始位置・固定）
-enStart         = 6.35 + 4.23×3 = 19.04mm（along方向・第4TM位置）
+enStart = 10mm
+TM上端y = 210-(-2.0)-5.9 = 206.1mm（外枠外）
+ansStartY = 210 - 6.35 - 29×6.35 = 19.50mm（第30MB・固定）
+maxRowsPerCol = 30 - 2 = 28行
 
 受験番号欄:
-  examTopY = 19.50mm（第30MB位置、解答欄と同じ）
-  桁di=0のx = 19.04mm（along=tmInterval）
-  桁di=1のx = 19.04 + 4.23 = 23.27mm
-  数字ri=0のy = 19.50mm（perp=pitch）
+  桁di=0のx = 10mm
+  数字ri=0のy = 19.50mm
   数字ri=9のy = 19.50 + 9×6.35 = 76.65mm
 
-解答欄:
-  ansStartY = 19.50mm（第30MB固定）
-  問1 y = 19.50mm、問2 y = 19.50 + 6.35 = 25.85mm（perp=pitch）
-  選択肢1 x = ansStart、選択肢2 x = ansStart + 4.23mm（along=tmInterval）
+解答欄（sectionGapMult=2）:
+  sectionGap = 2×4.23 = 8.46mm
+  ansStart = examEndX + 8.46mm
+  右端MB中心の上限 = 297 - 10 = 287mm
+  列ギャップ（columnGapMult=2）= 2×4.23 = 8.46mm
 ```
 
 ---
 
-## 18. 未実装・今後の課題
+## 20. 未実装・今後の課題
 
 - [ ] PDF出力機能
 - [ ] along方向のオーバーフロー検知（外枠からはみ出す場合の警告）
