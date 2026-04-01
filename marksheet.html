@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>マークシート生成ツール — SR-3500</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
 
@@ -185,7 +186,7 @@
   }
 
   .generate-btn {
-    margin: 16px;
+    margin: 16px 16px 0;
     background: var(--accent);
     border: none;
     color: #fff;
@@ -200,6 +201,25 @@
     text-transform: uppercase;
   }
   .generate-btn:hover { opacity: .85; }
+
+  .pdf-btn {
+    margin: 8px 16px 0;
+    background: transparent;
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+    text-transform: uppercase;
+    width: calc(100% - 32px);
+  }
+  .pdf-btn:hover { background: var(--accent2); color: #000; }
+  .pdf-btn:disabled { opacity: .4; cursor: not-allowed; }
 
   .warn-box {
     margin: 0 16px 16px;
@@ -312,6 +332,13 @@
         </div>
       </div>
       <div>
+        <div class="ctrl-label">TM配置方式</div>
+        <div class="seg" id="seg-tmtype">
+          <button class="active" data-val="control">制御型</button>
+          <button data-val="direct">直下型</button>
+        </div>
+      </div>
+      <div>
         <div class="ctrl-label">ピッチ <span id="lbl-pitch">0.25</span></div>
         <select id="sel-pitch">
           <option value="0.25">0.25</option>
@@ -339,6 +366,20 @@
           <div class="ctrl-label">選択肢数</div>
           <input type="number" id="inp-ccount" value="5" min="1" max="20">
         </div>
+      </div>
+      <div class="row2">
+        <div>
+          <div class="ctrl-label">MB長辺 (mm)</div>
+          <input type="number" id="inp-mblong" value="4" min="0.1" step="0.1">
+        </div>
+        <div>
+          <div class="ctrl-label">MB短辺 (mm)</div>
+          <input type="number" id="inp-mbshort" value="2" min="0.1" step="0.1">
+        </div>
+      </div>
+      <div id="row-maxrowsl">
+        <div class="ctrl-label">横型最大行数 (maxRowsL) <span id="lbl-maxrowsl">30</span></div>
+        <input type="number" id="inp-maxrowsl" value="30" min="1" max="100">
       </div>
       <div id="row-skipmb">
         <div class="ctrl-label">開始オフセット (skipMB) <span id="lbl-skip">2</span></div>
@@ -376,7 +417,8 @@
     </div>
 
     <button class="generate-btn" id="btn-gen">▶ プレビュー更新</button>
-    <div class="warn-box" id="warn-box">
+    <button class="pdf-btn" id="btn-pdf">⬇ PDF出力</button>
+    <div class="warn-box" id="warn-box" style="margin-top:12px">
       <div class="warn-title">警告</div>
       <ul id="warn-list"></ul>
     </div>
@@ -395,12 +437,12 @@
 // PITCH MASTER
 // =============================================
 const PITCH_MASTER = {
-  '0.25': { pitch:6.35,   firstX:6.35,  maxMB:33, tmS:0.89, tmL:5.9,  tmPos:-2.0 },
-  '1/6':  { pitch:4.233,  firstX:11.43, maxMB:48, tmS:1.27, tmL:3.81, tmPos:5.085 },
-  '0.2':  { pitch:5.08,   firstX:11.75, maxMB:40, tmS:0.89, tmL:5.9,  tmPos:-2.0 },
-  '0.2s': { pitch:5.08,   firstX:12.7,  maxMB:40, tmS:0.89, tmL:3.81, tmPos:5.095 },
-  '0.3':  { pitch:7.62,   firstX:14.50, maxMB:27, tmS:0.89, tmL:7.0,  tmPos:-2.0 },
-  '0.3F': { pitch:7.62,   firstX:17.78, maxMB:24, tmS:0.5,  tmL:5.08, tmPos:7.62 },
+  '0.25': { pitch:6.35,   firstX:6.35,  maxMB:33, tmS:0.89, tmL:5.9,  tmPos:-2.0,  maxRowsL:30 },
+  '1/6':  { pitch:4.233,  firstX:11.43, maxMB:48, tmS:1.27, tmL:3.81, tmPos:5.085, maxRowsL:43 },
+  '0.2':  { pitch:5.08,   firstX:11.75, maxMB:40, tmS:0.89, tmL:5.9,  tmPos:-2.0,  maxRowsL:36 },
+  '0.2s': { pitch:5.08,   firstX:12.7,  maxMB:40, tmS:0.89, tmL:3.81, tmPos:5.095, maxRowsL:36 },
+  '0.3':  { pitch:7.62,   firstX:14.50, maxMB:27, tmS:0.89, tmL:7.0,  tmPos:-2.0,  maxRowsL:24 },
+  '0.3F': { pitch:7.62,   firstX:17.78, maxMB:24, tmS:0.5,  tmL:5.08, tmPos:7.62,  maxRowsL:24 },
 };
 
 // Paper sizes (mm)
@@ -409,8 +451,8 @@ const PAPER = {
   landscape: { a4w:297, a4h:210, b4w:364, b4h:257 },
 };
 
-// MB size (mm)
-const MB_LONG = 4, MB_SHORT = 2;
+// MB size (mm) — デフォルト値（stateで管理）
+const MB_LONG_DEFAULT = 4, MB_SHORT_DEFAULT = 2;
 const PAD = 2; // frame padding mm
 const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない（SR-3500仕様）
 
@@ -419,6 +461,7 @@ const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない（SR-3500仕�
 // =============================================
 let state = {
   orientation: 'portrait',
+  tmType: 'control',  // 'control'=制御型 / 'direct'=直下型
   pitchName: '0.25',
   tmInterval: 4.23,
   questionCount: 50,
@@ -427,6 +470,9 @@ let state = {
   columnGapMult: 2,
   sectionGapMult: 2,
   examDigits: 5,
+  mbLong: MB_LONG_DEFAULT,   // MB長辺(mm)
+  mbShort: MB_SHORT_DEFAULT, // MB短辺(mm)
+  maxRowsL: PITCH_MASTER['0.25'].maxRowsL, // 横型最大行数
 };
 
 // =============================================
@@ -469,6 +515,18 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
     state.orientation = btn.dataset.val;
     document.getElementById('lbl-colgap-unit').textContent =
       state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
+    document.getElementById('row-maxrowsl').style.display =
+      state.orientation === 'landscape' ? '' : 'none';
+    render();
+  });
+});
+
+// TM配置方式
+document.querySelectorAll('#seg-tmtype button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-tmtype button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tmType = btn.dataset.val;
     render();
   });
 });
@@ -477,6 +535,11 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
 document.getElementById('sel-pitch').addEventListener('change', e => {
   state.pitchName = e.target.value;
   document.getElementById('lbl-pitch').textContent = e.target.value;
+  // maxRowsLをピッチのデフォルト値にリセット
+  const defaultRows = PITCH_MASTER[e.target.value].maxRowsL;
+  state.maxRowsL = defaultRows;
+  document.getElementById('inp-maxrowsl').value = defaultRows;
+  document.getElementById('lbl-maxrowsl').textContent = defaultRows;
   updatePitchTable();
   render();
 });
@@ -491,13 +554,16 @@ function bindNum(id, key, label) {
     render();
   });
 }
-bindNum('inp-tmi',    'tmInterval',     'lbl-tmi');
-bindNum('inp-qcount', 'questionCount');
-bindNum('inp-ccount', 'choiceCount');
-bindNum('inp-skip',   'skipMB',         'lbl-skip');
-bindNum('inp-colgap', 'columnGapMult');
-bindNum('inp-secgap', 'sectionGapMult');
-bindNum('inp-digits', 'examDigits',     'lbl-digits');
+bindNum('inp-tmi',     'tmInterval',     'lbl-tmi');
+bindNum('inp-qcount',  'questionCount');
+bindNum('inp-ccount',  'choiceCount');
+bindNum('inp-mblong',  'mbLong');
+bindNum('inp-mbshort', 'mbShort');
+bindNum('inp-maxrowsl','maxRowsL',       'lbl-maxrowsl');
+bindNum('inp-skip',    'skipMB',         'lbl-skip');
+bindNum('inp-colgap',  'columnGapMult');
+bindNum('inp-secgap',  'sectionGapMult');
+bindNum('inp-digits',  'examDigits',     'lbl-digits');
 
 document.getElementById('btn-gen').addEventListener('click', render);
 
@@ -557,21 +623,17 @@ function render() {
   const p = PITCH_MASTER[state.pitchName];
   const paper = PAPER[state.orientation];
   const isPortrait = state.orientation === 'portrait';
-
-  // A4 outer (relative to itself, origin 0,0)
   const outer = { x1:0, y1:0, x2:paper.a4w, y2:paper.a4h };
 
   // Warnings
   const warns = checkWarnings(p, outer);
   warnList.innerHTML = warns.map(w=>`<li>${w}</li>`).join('');
   warnBox.classList.toggle('visible', warns.length > 0);
-
-  // Computed vals
   showComputedVals(p, outer);
 
   // Setup canvas
   const DPR = window.devicePixelRatio || 1;
-  const DISPLAY_W = 680; // canvas display width px
+  const DISPLAY_W = 680;
   MM2PX = DISPLAY_W / paper.b4w;
 
   const canvasW = Math.round(mm(paper.b4w));
@@ -584,152 +646,194 @@ function render() {
   wrapper.style.width  = canvasW + 'px';
   wrapper.style.height = canvasH + 'px';
 
-  // B4 offset
   const ofx = (paper.b4w - paper.a4w) / 2;
   const ofy = (paper.b4h - paper.a4h) / 2;
 
-  // Draw B4 background (white paper)
+  // Canvas background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasW, canvasH);
-
-  // Draw A4 outer frame (light grey)
-  ctx.strokeStyle = '#cccccc';
-  ctx.lineWidth = 0.5;
+  // A4外枠: マゼンタ100% 0.4pt
+  const LW_OUTER_PX = (0.4 / 2.835) * MM2PX;
+  ctx.strokeStyle = '#ff00ff';
+  ctx.lineWidth = LW_OUTER_PX;
   ctx.strokeRect(mm(ofx), mm(ofy), mm(paper.a4w), mm(paper.a4h));
 
-  // --- Coordinate helpers (A4 relative, then +offset) ---
-  function X(x) { return mm(ofx + x); }
-  function Y(y) { return mm(ofy + y); }
+  // Canvas drawing API wrapper
+  const canvasAPI = {
+    setFill:   (r,g,b)   => { ctx.fillStyle   = `rgb(${r},${g},${b})`; },
+    setStroke: (r,g,b,w) => { ctx.strokeStyle = `rgb(${r},${g},${b})`; ctx.lineWidth = w * MM2PX; },
+    rect:  (x,y,w,h)     => { ctx.fillRect(mm(ofx+x), mm(ofy+y), mm(w), mm(h)); },
+    strokeRect: (x,y,w,h)=> { ctx.strokeRect(mm(ofx+x), mm(ofy+y), mm(w), mm(h)); },
+    ellipse: (cx,cy,rx,ry,fill) => {
+      ctx.beginPath();
+      ctx.ellipse(mm(ofx+cx), mm(ofy+cy), mm(rx), mm(ry), 0, 0, Math.PI*2);
+      if (fill) { ctx.fill(); } else { ctx.stroke(); }
+    },
+    text: (x,y,str,sizeMm,align,font) => {
+      ctx.font = `${mm(sizeMm)}px ${font}`;
+      ctx.textAlign  = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(str, mm(ofx+x), mm(ofy+y));
+    },
+  };
 
-  // =============================================
-  // Compute positions
-  // =============================================
+  drawLayout(canvasAPI, p, paper, isPortrait);
+}
+
+// =============================================
+// PDF EXPORT
+// =============================================
+document.getElementById('btn-pdf').addEventListener('click', exportPDF);
+
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const p = PITCH_MASTER[state.pitchName];
+  const paper = PAPER[state.orientation];
+  const isPortrait = state.orientation === 'portrait';
+
+  const orientation = isPortrait ? 'portrait' : 'landscape';
+  const doc = new jsPDF({ orientation, unit: 'mm', format: [paper.b4w, paper.b4h] });
+
+  const ofx = (paper.b4w - paper.a4w) / 2;
+  const ofy = (paper.b4h - paper.a4h) / 2;
+
+  // A4外枠: マゼンタ100% CMYK(0,100,0,0) 0.4pt
+  doc.setDrawColor(0, 100, 0, 0); // jsPDF CMYK
+  doc.setLineWidth(0.4 / 2.835);
+  doc.rect(ofx, ofy, paper.a4w, paper.a4h, 'S');
+
+  // PDF drawing API wrapper (CMYK)
+  const pdfAPI = {
+    // r,g,b は内部的にマゼンタ(255,0,255)か黒(0,0,0)を識別してCMYKに変換
+    setFill: (r,g,b) => {
+      if (r===0 && g===0 && b===0)       doc.setFillColor(0, 0, 0, 100);   // K100%
+      else if (r===255 && g===0 && b===255) doc.setFillColor(0, 100, 0, 0); // M100%
+      else doc.setFillColor(r, g, b);
+    },
+    setStroke: (r,g,b,w) => {
+      if (r===0 && g===0 && b===0)          doc.setDrawColor(0, 0, 0, 100);
+      else if (r===255 && g===0 && b===255) doc.setDrawColor(0, 100, 0, 0);
+      else doc.setDrawColor(r, g, b);
+      doc.setLineWidth(w);
+    },
+    rect:  (x,y,w,h)     => { doc.rect(ofx+x, ofy+y, w, h, 'F'); },
+    strokeRect: (x,y,w,h)=> { doc.rect(ofx+x, ofy+y, w, h, 'S'); },
+    ellipse: (cx,cy,rx,ry,fill) => {
+      doc.ellipse(ofx+cx, ofy+cy, rx, ry, fill ? 'F' : 'S');
+    },
+    text: (x,y,str,sizeMm,align,_font) => {
+      doc.setFontSize(sizeMm * 2.835);
+      doc.text(String(str), ofx+x, ofy+y, { align });
+    },
+  };
+
+  drawLayout(pdfAPI, p, paper, isPortrait);
+
+  const orient = isPortrait ? 'portrait' : 'landscape';
+  doc.save(`marksheet_${orient}_${state.pitchName}.pdf`);
+}
+
+// =============================================
+// SHARED DRAW LOGIC
+// =============================================
+function drawLayout(api, p, paper, isPortrait) {
+  const outer = { x1:0, y1:0, x2:paper.a4w, y2:paper.a4h };
   const tmInterval = state.tmInterval;
   const pitch = p.pitch;
   const firstX = p.firstX;
   const tmS = p.tmS;
   const tmL = p.tmL;
   const tmPos = p.tmPos;
-  const skipMB = state.skipMB; // 縦型・横型ともにユーザー設定をそのまま使用
+  const skipMB = state.skipMB;
+  const MB_LONG  = state.mbLong;   // ユーザー変更可能
+  const MB_SHORT = state.mbShort;  // ユーザー変更可能
+  const maxRowsL = state.maxRowsL; // ユーザー変更可能（横型のみ）
 
-  const MARGIN = 9; // along方向の両端余白(mm): 外枠端からMB/TM端まで
-  // MB中心 = MARGIN + MB短辺の半分（along方向の寸法はMB_SHORT=2mm）
-  const enStart = MARGIN + MB_SHORT / 2; // = 10mm
-  // 縦型: sectionGap = 値×tmInterval、columnGap = 値×pitch
-  // 横型: sectionGap = 値×tmInterval、columnGap = 値×tmInterval
+  const MARGIN = 9;
+  const enStart = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+
   const sectionGap = tmInterval * state.sectionGapMult;
   const columnGap = isPortrait
     ? pitch * state.columnGapMult
     : tmInterval * state.columnGapMult;
 
+  const PT2MM = 1 / 2.835;
+  const LW_OUTER = 0.4 * PT2MM;
+  const LW_MB    = 0.6 * PT2MM;
+  const FS_MB_PDF    = 7 * PT2MM;
+  const FS_MB_CANVAS = MB_SHORT * 0.65;
+  const FS_QLABEL    = MB_SHORT * 1.5;
+
   // =============================================
   // Draw TMs for a given set of along-positions
   // =============================================
-  const tmAlongPositions = new Set(); // deduplicate
+  const tmAlongPositions = new Set();
 
   function collectTM(alongCenter) {
-    // along center = MB中心のalong座標, TM上端(縦型y) or TM左端(横型x) = along - tmS*1.5
-    const key = alongCenter.toFixed(3);
     tmAlongPositions.add(parseFloat(alongCenter.toFixed(3)));
   }
 
   function drawAllTMs() {
-    ctx.fillStyle = '#000000';
+    // 制御型: TM上端 = MB中心 - tmS×1.5
+    // 直下型: TM上端 = MB中心 - tmS/2  (TM中心=MB中心)
+    const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+    api.setFill(0, 0, 0);
     const sorted = [...tmAlongPositions].sort((a,b)=>a-b);
     sorted.forEach(alongCenter => {
       if (isPortrait) {
-        // TM left edge x = outer.x1 + tmPos (may be negative = outside)
         const tx = outer.x1 + tmPos;
-        // TM top y = alongCenter - tmS * 1.5
-        const ty = alongCenter - tmS * 1.5;
-        // TM size: along=tmS(短辺=縦), perp=tmL(長辺=横)
-        ctx.fillRect(X(tx), Y(ty), mm(tmL), mm(tmS));
+        const ty = alongCenter - tmOffset;
+        api.rect(tx, ty, tmL, tmS);
       } else {
-        // Landscape
-        // TM top y = outer.y2 - tmPos - tmL  (tmPos<0 → outside bottom)
         const ty = outer.y2 - tmPos - tmL;
-        // TM left x = alongCenter - tmS * 1.5
-        const tx = alongCenter - tmS * 1.5;
-        // TM size: along=tmS(短辺=横), perp=tmL(長辺=縦)
-        ctx.fillRect(X(tx), Y(ty), mm(tmS), mm(tmL));
+        const tx = alongCenter - tmOffset;
+        api.rect(tx, ty, tmS, tmL);
       }
     });
   }
 
-  // =============================================
-  // Draw a single MB (ellipse)
-  // =============================================
-  function drawMB(cx, cy, isPortrait, fill=false) {
-    // Portrait: mbL(4mm)=perp(右), mbS(2mm)=along(下) → 横長楕円
-    // Landscape: mbL(4mm)=along(右), mbS(2mm)=perp(下) → 縦長楕円
-    const rX = isPortrait ? mm(MB_LONG/2) : mm(MB_SHORT/2);
-    const rY = isPortrait ? mm(MB_SHORT/2) : mm(MB_LONG/2);
-    ctx.beginPath();
-    ctx.ellipse(X(cx), Y(cy), rX, rY, 0, 0, Math.PI*2);
-    if (fill) {
-      ctx.fillStyle = '#e84393';
-      ctx.fill();
-    } else {
-      ctx.strokeStyle = '#e84393';
-      ctx.lineWidth = 0.7;
-      ctx.stroke();
-    }
+  // Draw a single MB (ellipse) — 塗りなし・線のみ
+  function drawMB(cx, cy, portrait) {
+    const rx = portrait ? MB_LONG/2 : MB_SHORT/2;
+    const ry = portrait ? MB_SHORT/2 : MB_LONG/2;
+    api.setStroke(255, 0, 255, LW_MB); // マゼンタ100%
+    api.ellipse(cx, cy, rx, ry, false);
   }
 
-  // Draw text inside MB
+  // Draw text inside MB: MSゴシック マゼンタ100%
+  // Canvas: MB短辺の0.7倍(視認用)、PDF: 0.7pt
   function drawMBText(cx, cy, text) {
-    ctx.fillStyle = '#e84393';
-    ctx.font = `${mm(MB_SHORT * 1.25)}px 'IBM Plex Mono', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, X(cx), Y(cy));
+    api.setFill(255, 0, 255);
+    api.text(cx, cy, text, FS_MB_PDF, 'center', "'MS Gothic', 'MS ゴシック', monospace");
   }
 
-  // Draw question number label
+  // Draw question number label: マゼンタ100%
   function drawQLabel(cx, cy, text) {
-    ctx.fillStyle = '#e84393';
-    ctx.font = `${mm(MB_SHORT * 1.5)}px 'Noto Sans JP', sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, X(cx) - mm(MB_LONG/2) - mm(0.5), Y(cy));
+    api.setFill(255, 0, 255);
+    api.text(cx - MB_LONG/2 - 0.5, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
   }
 
-  // Draw frame rect around a section
+  // Draw frame rect — マゼンタ100% 0.4pt
   function drawFrame(x1, y1, x2, y2) {
-    ctx.strokeStyle = '#e84393';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(X(x1 - PAD), Y(y1 - PAD), mm(x2-x1 + PAD*2), mm(y2-y1 + PAD*2));
+    api.setStroke(255, 0, 255, LW_OUTER);
+    api.strokeRect(x1 - PAD, y1 - PAD, (x2 - x1) + PAD*2, (y2 - y1) + PAD*2);
   }
 
   // =============================================
   // PORTRAIT Layout
   // =============================================
   if (isPortrait) {
-    // --- Exam Number Section ---
-    // 桁: perp(右), MB中心x = outer.x1 + firstX + (skipMB + di)*pitch
-    // 数字: along(下), MB中心y = enStart + ri*tmInterval
     const examDigits = state.examDigits;
-
-    // along range for exam
     const enStartY = enStart;
     const enEndY   = enStart + 9 * tmInterval;
-
-    // perp range for exam
     const enStartX = outer.x1 + firstX + skipMB * pitch;
     const enEndX   = enStartX + (examDigits - 1) * pitch;
 
-    // Collect TMs for exam
-    for (let ri = 0; ri <= 9; ri++) {
-      collectTM(enStart + ri * tmInterval);
-    }
+    for (let ri = 0; ri <= 9; ri++) collectTM(enStart + ri * tmInterval);
 
-    // Draw exam frame
-    drawFrame(
-      enStartX - MB_LONG/2, enStartY - MB_SHORT/2,
-      enEndX   + MB_LONG/2, enEndY   + MB_SHORT/2
-    );
+    drawFrame(enStartX - MB_LONG/2, enStartY - MB_SHORT/2,
+              enEndX   + MB_LONG/2, enEndY   + MB_SHORT/2);
 
-    // Draw exam MBs
     for (let di = 0; di < examDigits; di++) {
       const cx = outer.x1 + firstX + (skipMB + di) * pitch;
       for (let ri = 0; ri <= 9; ri++) {
@@ -739,34 +843,19 @@ function render() {
       }
     }
 
-    // --- Answer Section ---
     const ansStartY = enEndY + sectionGap;
+    const colWidth  = (state.choiceCount - 1) * pitch;
+    const baseX     = outer.x1 + firstX + skipMB * pitch;
+    // TM下端も9mm余白に収める: MB中心上限 = outer.y2 - MARGIN - tmS*1.5 - MB_SHORT/2
+    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const colMBrows = Math.floor((maxYmm - ansStartY) / tmInterval) + 1;
+    const qPerCol   = Math.min(colMBrows, state.questionCount);
 
-    // How many questions fit per column
-    const questionsPerCol = state.questionCount;
-    // colWidth: 選択肢1中心〜選択肢N中心までの距離
-    const colWidth = (state.choiceCount - 1) * pitch;
-
-    // Calculate columns (wrap questions)
-    // First colBaseX: outer.x1 + firstX + skipMB*pitch
-    const baseX = outer.x1 + firstX + skipMB * pitch;
-
-    // Figure out how many rows each column can hold
-    // (just lay them all in columns that fit within page)
-    const maxYmm = outer.y2 - MARGIN - MB_SHORT / 2; // 下端: 外枠端からMB端まで9mm
-    const colMBrows = Math.floor((maxYmm - ansStartY - MB_SHORT/2) / tmInterval) + 1;
-    const qPerCol = Math.min(colMBrows, state.questionCount);
-
-    // Collect TMs for answer
-    const ansEndY_actual = { val: ansStartY };
-
-    let qi = 0;
-    let colIndex = 0;
-    const colPositions = []; // for frame
+    let qi = 0, colIndex = 0;
+    const colPositions = [];
 
     while (qi < state.questionCount) {
       const colBaseX = baseX + colIndex * (colWidth + columnGap);
-      const colStartQ = qi;
       let frameMinY = Infinity, frameMaxY = -Infinity;
 
       for (let r = 0; r < qPerCol && qi < state.questionCount; r++, qi++) {
@@ -774,114 +863,69 @@ function render() {
         collectTM(cy);
         frameMinY = Math.min(frameMinY, cy);
         frameMaxY = Math.max(frameMaxY, cy);
-        ansEndY_actual.val = Math.max(ansEndY_actual.val, cy);
-
-        // Question label
         drawQLabel(colBaseX, cy, `${qi+1}`);
-
         for (let ci = 0; ci < state.choiceCount; ci++) {
-          const cx = colBaseX + ci * pitch;
-          drawMB(cx, cy, true);
-          drawMBText(cx, cy, (ci+1).toString());
+          drawMB(colBaseX + ci * pitch, cy, true);
+          drawMBText(colBaseX + ci * pitch, cy, (ci+1).toString());
         }
       }
-
-      if (colPositions.length <= colIndex) {
-        colPositions.push({
-          x1: colBaseX - MB_LONG/2,
-          y1: frameMinY - MB_SHORT/2,
-          x2: colBaseX + (state.choiceCount-1)*pitch + MB_LONG/2,
-          y2: frameMaxY + MB_SHORT/2,
-        });
-      }
+      colPositions.push({
+        x1: colBaseX - MB_LONG/2,          y1: frameMinY - MB_SHORT/2,
+        x2: colBaseX + (state.choiceCount-1)*pitch + MB_LONG/2, y2: frameMaxY + MB_SHORT/2,
+      });
       colIndex++;
     }
 
-    // Draw answer frames
-    colPositions.forEach(f => {
-      drawFrame(f.x1, f.y1, f.x2, f.y2);
-    });
-
-    // Draw all TMs
+    colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
     drawAllTMs();
 
   } else {
     // =============================================
     // LANDSCAPE Layout
     // =============================================
-    // 横型: 第1MBはouter.y2-firstX（下）、第30MBが上端（固定）
-    // skipMB=0 → 第1〜第30MB全使用、skipMB=2 → 第3〜第30MB使用（下側をスキップ）
-    // ansStartY（問1の位置=上端）は常に第30MB位置で固定
-    // 1列あたりの最大行数を (30 - skipMB) で制限することでskipMBを反映
-    const mbBase   = outer.y2 - firstX;          // 第1MBのy（最下行）
-    const ansStartY = mbBase - 29 * pitch;        // 第30MBのy（最上行・固定）
-    const examTopY  = ansStartY;
-    const maxRowsPerCol = 30 - skipMB;            // 使用可能な行数上限
+    const mbBase        = outer.y2 - firstX;
+    const ansStartY     = mbBase - (maxRowsL - 1) * pitch;  // 第maxRowsL番MBのy（固定）
+    const examTopY      = ansStartY;
+    const maxRowsPerCol = maxRowsL - skipMB;  // 最大行数 - skipMB
+    const examDigits    = state.examDigits;
 
-    // --- Exam Number Section (along=right, perp=down) ---
-    const enStartX = enStart; // along第4TM
-    const examDigits = state.examDigits;
-
-    // 桁: along(右), MB中心x = enStart + di*tmInterval
-    // 数字: perp(下), MB中心y = examTopY + ri*pitch
-
-    // Collect TMs for exam
-    for (let di = 0; di < examDigits; di++) {
-      collectTM(enStart + di * tmInterval);
-    }
+    for (let di = 0; di < examDigits; di++) collectTM(enStart + di * tmInterval);
 
     const enStartXcoord = enStart;
     const enEndXcoord   = enStart + (examDigits-1) * tmInterval;
-    const enStartYcoord = examTopY;
     const enEndYcoord   = examTopY + 9 * pitch;
 
-    drawFrame(
-      enStartXcoord - MB_SHORT/2, enStartYcoord - MB_LONG/2,
-      enEndXcoord   + MB_SHORT/2, enEndYcoord   + MB_LONG/2
-    );
+    drawFrame(enStartXcoord - MB_SHORT/2, examTopY   - MB_LONG/2,
+              enEndXcoord   + MB_SHORT/2, enEndYcoord + MB_LONG/2);
 
     for (let di = 0; di < examDigits; di++) {
       const cx = enStart + di * tmInterval;
       for (let ri = 0; ri <= 9; ri++) {
-        const cy = examTopY + ri * pitch;
-        drawMB(cx, cy, false);
-        drawMBText(cx, cy, ri.toString());
+        drawMB(cx, examTopY + ri * pitch, false);
+        drawMBText(cx, examTopY + ri * pitch, ri.toString());
       }
     }
 
-    // --- Answer Section ---
-    // 選択肢: along(右), MB中心x = ansStart + colIndex*choiceCount*tmInterval + ci*tmInterval
-    // 問題: perp(下), MB中心y = ansStartY + qi*pitch
+    const ansStart = enEndXcoord + sectionGap;
+    const colWidth  = (state.choiceCount - 1) * tmInterval;
+    // TM右端も9mm余白に収める: MB中心上限 = outer.x2 - MARGIN - tmS*1.5 - MB_SHORT/2
+    const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
 
-    const examEndX = enEndXcoord;
-    const ansStart = examEndX + sectionGap;
-
-    // colWidth: 選択肢1中心〜選択肢N中心までの距離
-    const colWidth = (state.choiceCount - 1) * tmInterval;
-
-    let qi = 0;
-    let colIndex = 0;
-    const maxXmm = outer.x2 - MARGIN - MB_SHORT / 2; // 右端: 外枠端からMB端まで9mm
-
+    let qi = 0, colIndex = 0;
     while (qi < state.questionCount) {
       const colBaseX = ansStart + colIndex * (colWidth + columnGap);
-      if (colBaseX > maxXmm) break; // overflow guard
+      if (colBaseX > maxXmm) break;
 
       let frameMinY = Infinity, frameMaxY = -Infinity;
-      let frameMinX = colBaseX - MB_SHORT/2;
-      let frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
-
-      // skipMBぶん下側をスキップした行数上限を適用
-      const qThisCol = Math.min(maxRowsPerCol, state.questionCount - qi);
+      const frameMinX = colBaseX - MB_SHORT/2;
+      const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
+      const qThisCol  = Math.min(maxRowsPerCol, state.questionCount - qi);
 
       for (let r = 0; r < qThisCol; r++, qi++) {
         const cy = ansStartY + r * pitch;
         frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
         frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
-
-        // Question label (above first choice)
         drawQLabel(colBaseX, cy, `${qi+1}`);
-
         for (let ci = 0; ci < state.choiceCount; ci++) {
           const cx = colBaseX + ci * tmInterval;
           collectTM(cx);
@@ -889,12 +933,9 @@ function render() {
           drawMBText(cx, cy, (ci+1).toString());
         }
       }
-
       drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
       colIndex++;
     }
-
-    // Draw all TMs
     drawAllTMs();
   }
 }
@@ -903,6 +944,7 @@ function render() {
 // Init
 // =============================================
 initPitchTable();
+document.getElementById('row-maxrowsl').style.display = 'none';
 render();
 </script>
 </body>
