@@ -339,6 +339,20 @@
         </div>
       </div>
       <div>
+        <div class="ctrl-label">裏面</div>
+        <div class="seg" id="seg-back">
+          <button class="active" data-val="false">なし</button>
+          <button data-val="true">あり</button>
+        </div>
+      </div>
+      <div id="row-side" style="display:none">
+        <div class="ctrl-label">表示面</div>
+        <div class="seg" id="seg-side">
+          <button class="active" data-val="front">表面</button>
+          <button data-val="back">裏面</button>
+        </div>
+      </div>
+      <div>
         <div class="ctrl-label">ピッチ <span id="lbl-pitch">0.25</span></div>
         <select id="sel-pitch">
           <option value="0.25">0.25</option>
@@ -461,7 +475,7 @@ const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない（SR-3500仕�
 // =============================================
 let state = {
   orientation: 'portrait',
-  tmType: 'control',  // 'control'=制御型 / 'direct'=直下型
+  tmType: 'control',
   pitchName: '0.25',
   tmInterval: 4.23,
   questionCount: 50,
@@ -470,9 +484,11 @@ let state = {
   columnGapMult: 2,
   sectionGapMult: 2,
   examDigits: 5,
-  mbLong: MB_LONG_DEFAULT,   // MB長辺(mm)
-  mbShort: MB_SHORT_DEFAULT, // MB短辺(mm)
-  maxRowsL: PITCH_MASTER['0.25'].maxRowsL, // 横型最大行数
+  mbLong: MB_LONG_DEFAULT,
+  mbShort: MB_SHORT_DEFAULT,
+  maxRowsL: PITCH_MASTER['0.25'].maxRowsL,
+  hasBack: false,   // 裏面の有無
+  side: 'front',    // 現在表示面 'front' / 'back'
 };
 
 // =============================================
@@ -517,6 +533,32 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
       state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
     document.getElementById('row-maxrowsl').style.display =
       state.orientation === 'landscape' ? '' : 'none';
+    render();
+  });
+});
+
+// 裏面有無
+document.querySelectorAll('#seg-back button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-back button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.hasBack = btn.dataset.val === 'true';
+    document.getElementById('row-side').style.display = state.hasBack ? '' : 'none';
+    if (!state.hasBack) {
+      state.side = 'front';
+      document.querySelectorAll('#seg-side button').forEach(b=>b.classList.remove('active'));
+      document.querySelector('#seg-side button[data-val="front"]').classList.add('active');
+    }
+    render();
+  });
+});
+
+// 表裏切替
+document.querySelectorAll('#seg-side button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-side button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.side = btn.dataset.val;
     render();
   });
 });
@@ -587,6 +629,81 @@ function checkWarnings(p, outer) {
     const y9 = examTopY + 9 * p.pitch;
     if (y9 > outer.y2) warns.push('受験番号欄の数字9行が外枠外にはみ出します');
   }
+
+  // はみ出しチェック: 表面＋裏面で全問収まるか
+  const PT2MM = 1 / 2.835;
+  const MB_SHORT = state.mbShort;
+  const MB_LONG  = state.mbLong;
+  const MARGIN   = 9;
+  const tmS      = p.tmS;
+  const pitch    = p.pitch;
+  const firstX   = p.firstX;
+  const skipMB   = state.skipMB;
+  const maxRowsL = state.maxRowsL;
+  const tmInterval = state.tmInterval;
+  const sectionGap = tmInterval * (state.sectionGapMult + 1);
+  const columnGap  = state.orientation === 'portrait'
+    ? pitch      * (state.columnGapMult + 1)
+    : tmInterval * (state.columnGapMult + 1);
+  const enStart  = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+  const choiceCount = state.choiceCount;
+
+  let totalCapacity = 0;
+
+  if (state.orientation === 'portrait') {
+    // 表面
+    const colWidth  = (choiceCount - 1) * pitch;
+    const enEndY    = enStart + 9 * tmInterval;
+    const ansStartY = enEndY + sectionGap;
+    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const maxXmm    = outer.x2 - MARGIN - MB_LONG / 2;
+    const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    const baseX     = outer.x1 + firstX + skipMB * pitch;
+    let frontCols = 0;
+    while (baseX + frontCols * (colWidth + columnGap) + colWidth + MB_LONG / 2 <= maxXmm) frontCols++;
+    if (frontCols === 0) frontCols = 1;
+    totalCapacity += qPerCol * frontCols;
+
+    // 裏面（hasBackのとき）
+    if (state.hasBack) {
+      const backChoice1x   = outer.x2 - firstX - (maxRowsL - 1) * pitch;
+      const backRightLimit = outer.x2 - firstX - skipMB * pitch;
+      const maxYmmB        = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      const qPerColB       = Math.max(0, Math.floor((maxYmmB - enStart) / tmInterval) + 1);
+      let backCols = 0;
+      while (true) {
+        const colBaseX = backChoice1x + backCols * (colWidth + columnGap);
+        if (colBaseX + colWidth + MB_LONG / 2 + PAD > backRightLimit) break;
+        if (colBaseX - MB_LONG / 2 < outer.x1) break;
+        backCols++;
+      }
+      totalCapacity += qPerColB * backCols;
+    }
+  } else {
+    // 横型表面
+    const colWidth   = (choiceCount - 1) * tmInterval;
+    const enEndX     = enStart + (state.examDigits - 1) * tmInterval;
+    const ansStart   = enEndX + sectionGap;
+    const maxXmm     = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const qPerCol    = maxRowsL - skipMB;
+    let frontCols = 0;
+    while (ansStart + frontCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmm) frontCols++;
+    totalCapacity += qPerCol * frontCols;
+
+    // 横型裏面
+    if (state.hasBack) {
+      const ansStartB  = enStart;
+      const maxXmmB    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      let backCols = 0;
+      while (ansStartB + backCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmmB) backCols++;
+      totalCapacity += qPerCol * backCols;
+    }
+  }
+
+  if (totalCapacity < state.questionCount) {
+    warns.push('マークがはみ出ています');
+  }
+
   return warns;
 }
 
@@ -677,7 +794,7 @@ function render() {
     },
   };
 
-  drawLayout(canvasAPI, p, paper, isPortrait);
+  drawLayout(canvasAPI, p, paper, isPortrait, state.side === 'back');
 }
 
 // =============================================
@@ -727,7 +844,7 @@ function exportPDF() {
     },
   };
 
-  drawLayout(pdfAPI, p, paper, isPortrait);
+  drawLayout(pdfAPI, p, paper, isPortrait, state.side === 'back');
 
   const orient = isPortrait ? 'portrait' : 'landscape';
   doc.save(`marksheet_${orient}_${state.pitchName}.pdf`);
@@ -736,7 +853,7 @@ function exportPDF() {
 // =============================================
 // SHARED DRAW LOGIC
 // =============================================
-function drawLayout(api, p, paper, isPortrait) {
+function drawLayout(api, p, paper, isPortrait, isBack=false) {
   const outer = { x1:0, y1:0, x2:paper.a4w, y2:paper.a4h };
   const tmInterval = state.tmInterval;
   const pitch = p.pitch;
@@ -745,198 +862,391 @@ function drawLayout(api, p, paper, isPortrait) {
   const tmL = p.tmL;
   const tmPos = p.tmPos;
   const skipMB = state.skipMB;
-  const MB_LONG  = state.mbLong;   // ユーザー変更可能
-  const MB_SHORT = state.mbShort;  // ユーザー変更可能
-  const maxRowsL = state.maxRowsL; // ユーザー変更可能（横型のみ）
+  const MB_LONG  = state.mbLong;
+  const MB_SHORT = state.mbShort;
+  const maxRowsL = state.maxRowsL;
 
   const MARGIN = 9;
   const enStart = MARGIN + tmS * 1.5 + MB_SHORT / 2;
-
-  const sectionGap = tmInterval * state.sectionGapMult;
+  // gapMult=0: インターバルなし（隣接、中心間距離=pitch/tmInterval×1）
+  // gapMult=N: MB N個分の空き（中心間距離=pitch/tmInterval×(N+1)）
+  const sectionGap = tmInterval * (state.sectionGapMult + 1);
   const columnGap = isPortrait
-    ? pitch * state.columnGapMult
-    : tmInterval * state.columnGapMult;
+    ? pitch    * (state.columnGapMult + 1)
+    : tmInterval * (state.columnGapMult + 1);
 
   const PT2MM = 1 / 2.835;
   const LW_OUTER = 0.4 * PT2MM;
   const LW_MB    = 0.6 * PT2MM;
-  const FS_MB_PDF    = 7 * PT2MM;
-  const FS_MB_CANVAS = MB_SHORT * 0.65;
-  const FS_QLABEL    = MB_SHORT * 1.5;
+  const FS_MB_PDF = 7 * PT2MM;
 
   // =============================================
-  // Draw TMs for a given set of along-positions
+  // 表面の1列あたり描画可能問題数を計算
+  // =============================================
+  function calcFrontQPerCol() {
+    if (isPortrait) {
+      const enEndY    = enStart + 9 * tmInterval;
+      const ansStartY = enEndY + sectionGap;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      return Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    } else {
+      return maxRowsL - skipMB;
+    }
+  }
+
+  // 表面で描画できる総問題数（列数 × qPerCol、ただし全問題数上限）
+  function calcFrontTotalQ() {
+    const qpc = calcFrontQPerCol();
+    if (isPortrait) {
+      // 縦型: 列数は横幅で決まるが、単純に全問が1列目に収まるかだけ判定
+      return qpc; // 1列分で判定（複数列は後続処理で判定）
+    } else {
+      // 横型: 1列のqPerCol × 列数
+      const enEndX  = enStart + (state.examDigits - 1) * tmInterval;
+      const ansStart2 = enEndX + sectionGap;
+      const colWidth2 = (state.choiceCount - 1) * tmInterval;
+      const maxXmm2   = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      let cols = 0;
+      while (ansStart2 + cols * (colWidth2 + columnGap) <= maxXmm2) cols++;
+      return qpc * cols;
+    }
+  }
+
+  // =============================================
+  // 裏面: 表面の描画問題数を実際に数える（縦型用）
+  // =============================================
+  function calcFrontQPortrait() {
+    const enEndY    = enStart + 9 * tmInterval;
+    const ansStartY = enEndY + sectionGap;
+    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    // 表面で何列描けるか（列全体が収まるかチェック）
+    const colWidth2 = (state.choiceCount - 1) * pitch;
+    const baseX2    = outer.x1 + firstX + skipMB * pitch;
+    const maxXmm2   = outer.x2 - MARGIN - MB_LONG / 2;
+    let cols = 0;
+    while (baseX2 + cols * (colWidth2 + columnGap) + colWidth2 + MB_LONG / 2 <= maxXmm2) cols++;
+    if (cols === 0) cols = 1;
+    return Math.min(qPerCol * cols, state.questionCount);
+  }
+
+  function calcFrontQLandscape() {
+    const qpc = maxRowsL - skipMB;
+    const enEndX  = enStart + (state.examDigits - 1) * tmInterval;
+    const ansStart2 = enEndX + sectionGap;
+    const colWidth2 = (state.choiceCount - 1) * tmInterval;
+    const maxXmm2   = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    let cols = 0;
+    while (ansStart2 + cols * (colWidth2 + columnGap) <= maxXmm2) cols++;
+    return Math.min(qpc * Math.max(cols, 1), state.questionCount);
+  }
+
+  // =============================================
+  // TM描画（縦型・横型・表裏で配置が異なる）
   // =============================================
   const tmAlongPositions = new Set();
-
   function collectTM(alongCenter) {
     tmAlongPositions.add(parseFloat(alongCenter.toFixed(3)));
   }
 
   function drawAllTMs() {
-    // 制御型: TM上端 = MB中心 - tmS×1.5
-    // 直下型: TM上端 = MB中心 - tmS/2  (TM中心=MB中心)
-    const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
     api.setFill(0, 0, 0);
     const sorted = [...tmAlongPositions].sort((a,b)=>a-b);
-    sorted.forEach(alongCenter => {
+    sorted.forEach(ac => {
       if (isPortrait) {
-        const tx = outer.x1 + tmPos;
-        const ty = alongCenter - tmOffset;
-        api.rect(tx, ty, tmL, tmS);
+        // 縦型: along=下↓
+        // TM配置辺: 表面=人間視点で左辺(outer.x1)、裏面=人間視点で右辺(outer.x2)
+        // 制御型: TM上端 = MB中心 - tmS×1.5
+        // 直下型: TM上端 = MB中心 - tmS/2
+        const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+        const tx = isBack
+          ? outer.x2 - tmPos - tmL   // 裏面: 人間視点で右辺基準
+          : outer.x1 + tmPos;         // 表面: 人間視点で左辺基準
+        api.rect(tx, ac - tmOffset, tmL, tmS);
       } else {
+        // 横型: along=右→
+        // TM along方向オフセット（制御型/直下型）
+        const txOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+        const tx = ac - txOffset;
+        // TM perp方向（y）の位置
+        // 表面・裏面共通: 下辺基準 outer.y2 - tmPos - tmL
         const ty = outer.y2 - tmPos - tmL;
-        const tx = alongCenter - tmOffset;
         api.rect(tx, ty, tmS, tmL);
       }
     });
   }
 
-  // Draw a single MB (ellipse) — 塗りなし・線のみ
+  // MB描画
   function drawMB(cx, cy, portrait) {
     const rx = portrait ? MB_LONG/2 : MB_SHORT/2;
     const ry = portrait ? MB_SHORT/2 : MB_LONG/2;
-    api.setStroke(255, 0, 255, LW_MB); // マゼンタ100%
+    api.setStroke(255, 0, 255, LW_MB);
     api.ellipse(cx, cy, rx, ry, false);
   }
 
-  // Draw text inside MB: MSゴシック マゼンタ100%
-  // Canvas: MB短辺の0.7倍(視認用)、PDF: 0.7pt
   function drawMBText(cx, cy, text) {
     api.setFill(255, 0, 255);
     api.text(cx, cy, text, FS_MB_PDF, 'center', "'MS Gothic', 'MS ゴシック', monospace");
   }
 
-  // Draw question number label: マゼンタ100%
+  // 問題番号ラベル
+  // 縦型裏面: 選択肢が左→なので選択肢1MBの右にラベル
+  // それ以外: 選択肢1MBの左にラベル
   function drawQLabel(cx, cy, text) {
     api.setFill(255, 0, 255);
-    api.text(cx - MB_LONG/2 - 0.5, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+    if (isPortrait && isBack) {
+      api.text(cx + MB_LONG/2 + 0.5, cy, text, MB_SHORT * 1.5, 'left', "'Noto Sans JP', sans-serif");
+    } else {
+      api.text(cx - MB_LONG/2 - 0.5, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+    }
   }
 
-  // Draw frame rect — マゼンタ100% 0.4pt
   function drawFrame(x1, y1, x2, y2) {
     api.setStroke(255, 0, 255, LW_OUTER);
-    api.strokeRect(x1 - PAD, y1 - PAD, (x2 - x1) + PAD*2, (y2 - y1) + PAD*2);
+    const fx1 = Math.min(x1, x2), fx2 = Math.max(x1, x2);
+    const fy1 = Math.min(y1, y2), fy2 = Math.max(y1, y2);
+    api.strokeRect(fx1 - PAD, fy1 - PAD, (fx2 - fx1) + PAD*2, (fy2 - fy1) + PAD*2);
   }
 
   // =============================================
-  // PORTRAIT Layout
+  // PORTRAIT Layout（縦型）
   // =============================================
   if (isPortrait) {
-    const examDigits = state.examDigits;
-    const enStartY = enStart;
-    const enEndY   = enStart + 9 * tmInterval;
-    const enStartX = outer.x1 + firstX + skipMB * pitch;
-    const enEndX   = enStartX + (examDigits - 1) * pitch;
 
-    for (let ri = 0; ri <= 9; ri++) collectTM(enStart + ri * tmInterval);
+    if (!isBack) {
+      // =============================================
+      // 縦型 表面
+      // =============================================
+      const perpBase = outer.x1 + firstX + skipMB * pitch;
 
-    drawFrame(enStartX - MB_LONG/2, enStartY - MB_SHORT/2,
-              enEndX   + MB_LONG/2, enEndY   + MB_SHORT/2);
-
-    for (let di = 0; di < examDigits; di++) {
-      const cx = outer.x1 + firstX + (skipMB + di) * pitch;
-      for (let ri = 0; ri <= 9; ri++) {
-        const cy = enStart + ri * tmInterval;
-        drawMB(cx, cy, true);
-        drawMBText(cx, cy, ri.toString());
-      }
-    }
-
-    const ansStartY = enEndY + sectionGap;
-    const colWidth  = (state.choiceCount - 1) * pitch;
-    const baseX     = outer.x1 + firstX + skipMB * pitch;
-    // TM下端も9mm余白に収める: MB中心上限 = outer.y2 - MARGIN - tmS*1.5 - MB_SHORT/2
-    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
-    const colMBrows = Math.floor((maxYmm - ansStartY) / tmInterval) + 1;
-    const qPerCol   = Math.min(colMBrows, state.questionCount);
-
-    let qi = 0, colIndex = 0;
-    const colPositions = [];
-
-    while (qi < state.questionCount) {
-      const colBaseX = baseX + colIndex * (colWidth + columnGap);
-      let frameMinY = Infinity, frameMaxY = -Infinity;
-
-      for (let r = 0; r < qPerCol && qi < state.questionCount; r++, qi++) {
-        const cy = ansStartY + r * tmInterval;
-        collectTM(cy);
-        frameMinY = Math.min(frameMinY, cy);
-        frameMaxY = Math.max(frameMaxY, cy);
-        drawQLabel(colBaseX, cy, `${qi+1}`);
-        for (let ci = 0; ci < state.choiceCount; ci++) {
-          drawMB(colBaseX + ci * pitch, cy, true);
-          drawMBText(colBaseX + ci * pitch, cy, (ci+1).toString());
+      // 受験番号欄
+      const examDigits = state.examDigits;
+      const enStartY = enStart;
+      const enEndY   = enStart + 9 * tmInterval;
+      for (let ri = 0; ri <= 9; ri++) collectTM(enStart + ri * tmInterval);
+      drawFrame(perpBase - MB_LONG/2, enStartY - MB_SHORT/2,
+                perpBase + (examDigits - 1) * pitch + MB_LONG/2, enEndY + MB_SHORT/2);
+      for (let di = 0; di < examDigits; di++) {
+        const cx = perpBase + di * pitch;
+        for (let ri = 0; ri <= 9; ri++) {
+          const cy = enStart + ri * tmInterval;
+          drawMB(cx, cy, true);
+          drawMBText(cx, cy, ri.toString());
         }
       }
-      colPositions.push({
-        x1: colBaseX - MB_LONG/2,          y1: frameMinY - MB_SHORT/2,
-        x2: colBaseX + (state.choiceCount-1)*pitch + MB_LONG/2, y2: frameMaxY + MB_SHORT/2,
-      });
-      colIndex++;
-    }
 
-    colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
-    drawAllTMs();
+      // 解答欄
+      const ansStartY = enEndY + sectionGap;
+      const colWidth  = (state.choiceCount - 1) * pitch;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      const maxXmm    = outer.x2 - MARGIN - MB_LONG / 2;
+      const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, state.questionCount);
+
+      let qi = 0, colIndex = 0;
+      const colPositions = [];
+      while (qi < state.questionCount) {
+        const colBaseX = perpBase + colIndex * (colWidth + columnGap);
+        // 列の右端MB全体が収まるかチェック
+        if (colBaseX + colWidth + MB_LONG / 2 > maxXmm) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        for (let r = 0; r < qPerCol && qi < state.questionCount; r++, qi++) {
+          const cy = ansStartY + r * tmInterval;
+          collectTM(cy);
+          frameMinY = Math.min(frameMinY, cy);
+          frameMaxY = Math.max(frameMaxY, cy);
+          drawQLabel(colBaseX, cy, `${qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * pitch;
+            drawMB(cx, cy, true);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        colPositions.push({
+          x1: colBaseX - MB_LONG/2, y1: frameMinY - MB_SHORT/2,
+          x2: colBaseX + (state.choiceCount-1)*pitch + MB_LONG/2, y2: frameMaxY + MB_SHORT/2,
+        });
+        colIndex++;
+      }
+      colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
+      drawAllTMs();
+
+    } else {
+      // =============================================
+      // 縦型 裏面
+      // 人間視点: TMは右側、MBは右側（TM側）から第1MB・第2MB…と並ぶ
+      // 問題番号・選択肢の見た目は表面と同じ（上→下、左→右）
+      // 物理MB座標はWeb座標系でouter.x2（人間視点で右）基準
+      // =============================================
+      const frontQ = calcFrontQPortrait();
+      const remainQ = state.questionCount - frontQ;
+
+      // 表面だけで全問収まる場合は外枠のみ
+      if (remainQ <= 0) {
+        api.setStroke(255, 0, 255, LW_OUTER);
+        api.strokeRect(outer.x1, outer.y1, outer.x2 - outer.x1, outer.y2 - outer.y1);
+        return;
+      }
+
+      // 受験番号欄なし。enStartから直接解答欄
+      const ansStartY = enStart;
+      const colWidth  = (state.choiceCount - 1) * pitch;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, remainQ);
+
+      // 裏面perp基準（人間視点での左右）:
+      //   人間視点で左側がTM反対側（x小）、右側がTM側（x大）
+      //   TM反対側（左）: (maxMB - maxRowsL) 個が使用不可
+      //   TM側（右）: skipMB 個が使用不可
+      //   使用範囲: 物理第(skipMB+1)番〜第(maxRowsL)番  計(maxRowsL - skipMB)個
+      //
+      //   選択肢①のx（人間視点で左端・maxRowsL番MB）
+      //     = outer.x2 - firstX - (maxRowsL - 1) * pitch
+      //   選択肢② = 選択肢①の右隣（x += pitch）
+      //   選択肢①の数字（MB番号）= maxRowsL
+      //   選択肢ci の数字 = maxRowsL - ci
+      //   列が増えるほど人間視点で右（x増加）へ展開
+      const maxMB = p.maxMB;
+      const backChoice1x = outer.x2 - firstX - (maxRowsL - 1) * pitch; // 選択肢①のx（左端）
+      const backRightLimit = outer.x2 - firstX - skipMB * pitch;        // 右端使用禁止境界
+
+      let qi = 0, colIndex = 0;
+      const colPositions = [];
+      while (qi < remainQ) {
+        // 各列の選択肢①のx（左端）: 列が増えるほど右へ
+        const colBaseX = backChoice1x + colIndex * (colWidth + columnGap);
+        // 右端MBのx = colBaseX + colWidth
+        // 右端使用禁止境界を超えないかチェック
+        if (colBaseX + colWidth + MB_LONG/2 + PAD > backRightLimit) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        for (let r = 0; r < qPerCol && qi < remainQ; r++, qi++) {
+          const cy = ansStartY + r * tmInterval;
+          collectTM(cy);
+          frameMinY = Math.min(frameMinY, cy);
+          frameMaxY = Math.max(frameMaxY, cy);
+          // 問題番号ラベル: 選択肢①MBの左側（表面と同じ）
+          api.setFill(255, 0, 255);
+          api.text(colBaseX - MB_LONG/2 - 0.5, cy, `${frontQ + qi + 1}`, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            // 左端が選択肢①（maxRowsL番MB）、右へ行くほど番号減少
+            // MB内数字は表面と同様に選択肢番号（1,2,3…）
+            const cx = colBaseX + ci * pitch;
+            drawMB(cx, cy, true);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        colPositions.push({
+          x1: colBaseX - MB_LONG/2,
+          y1: frameMinY - MB_SHORT/2,
+          x2: colBaseX + colWidth + MB_LONG/2,
+          y2: frameMaxY + MB_SHORT/2,
+        });
+        colIndex++;
+      }
+      colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
+      drawAllTMs();
+    }
 
   } else {
     // =============================================
-    // LANDSCAPE Layout
+    // LANDSCAPE Layout（横型）
     // =============================================
     const mbBase        = outer.y2 - firstX;
-    const ansStartY     = mbBase - (maxRowsL - 1) * pitch;  // 第maxRowsL番MBのy（固定）
-    const examTopY      = ansStartY;
-    const maxRowsPerCol = maxRowsL - skipMB;  // 最大行数 - skipMB
-    const examDigits    = state.examDigits;
+    const ansStartY     = mbBase - (maxRowsL - 1) * pitch;
+    const maxRowsPerCol = maxRowsL - skipMB;
 
-    for (let di = 0; di < examDigits; di++) collectTM(enStart + di * tmInterval);
-
-    const enStartXcoord = enStart;
-    const enEndXcoord   = enStart + (examDigits-1) * tmInterval;
-    const enEndYcoord   = examTopY + 9 * pitch;
-
-    drawFrame(enStartXcoord - MB_SHORT/2, examTopY   - MB_LONG/2,
-              enEndXcoord   + MB_SHORT/2, enEndYcoord + MB_LONG/2);
-
-    for (let di = 0; di < examDigits; di++) {
-      const cx = enStart + di * tmInterval;
-      for (let ri = 0; ri <= 9; ri++) {
-        drawMB(cx, examTopY + ri * pitch, false);
-        drawMBText(cx, examTopY + ri * pitch, ri.toString());
-      }
-    }
-
-    const ansStart = enEndXcoord + sectionGap;
-    const colWidth  = (state.choiceCount - 1) * tmInterval;
-    // TM右端も9mm余白に収める: MB中心上限 = outer.x2 - MARGIN - tmS*1.5 - MB_SHORT/2
-    const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
-
-    let qi = 0, colIndex = 0;
-    while (qi < state.questionCount) {
-      const colBaseX = ansStart + colIndex * (colWidth + columnGap);
-      if (colBaseX > maxXmm) break;
-
-      let frameMinY = Infinity, frameMaxY = -Infinity;
-      const frameMinX = colBaseX - MB_SHORT/2;
-      const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
-      const qThisCol  = Math.min(maxRowsPerCol, state.questionCount - qi);
-
-      for (let r = 0; r < qThisCol; r++, qi++) {
-        const cy = ansStartY + r * pitch;
-        frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
-        frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
-        drawQLabel(colBaseX, cy, `${qi+1}`);
-        for (let ci = 0; ci < state.choiceCount; ci++) {
-          const cx = colBaseX + ci * tmInterval;
-          collectTM(cx);
-          drawMB(cx, cy, false);
-          drawMBText(cx, cy, (ci+1).toString());
+    if (!isBack) {
+      // ---- 表面 ----
+      const examDigits = state.examDigits;
+      for (let di = 0; di < examDigits; di++) collectTM(enStart + di * tmInterval);
+      const enEndXcoord = enStart + (examDigits-1) * tmInterval;
+      const enEndYcoord = ansStartY + 9 * pitch;
+      drawFrame(enStart - MB_SHORT/2, ansStartY - MB_LONG/2,
+                enEndXcoord + MB_SHORT/2, enEndYcoord + MB_LONG/2);
+      for (let di = 0; di < examDigits; di++) {
+        const cx = enStart + di * tmInterval;
+        for (let ri = 0; ri <= 9; ri++) {
+          drawMB(cx, ansStartY + ri * pitch, false);
+          drawMBText(cx, ansStartY + ri * pitch, ri.toString());
         }
       }
-      drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
-      colIndex++;
+
+      const ansStart = enEndXcoord + sectionGap;
+      const colWidth  = (state.choiceCount - 1) * tmInterval;
+      const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+
+      let qi = 0, colIndex = 0;
+      while (qi < state.questionCount) {
+        const colBaseX = ansStart + colIndex * (colWidth + columnGap);
+        // 列の右端MB全体が収まるかチェック
+        if (colBaseX + colWidth + MB_SHORT / 2 > maxXmm) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        const frameMinX = colBaseX - MB_SHORT/2;
+        const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
+        const qThisCol  = Math.min(maxRowsPerCol, state.questionCount - qi);
+        for (let r = 0; r < qThisCol; r++, qi++) {
+          const cy = ansStartY + r * pitch;
+          frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
+          frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
+          drawQLabel(colBaseX, cy, `${qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * tmInterval;
+            collectTM(cx);
+            drawMB(cx, cy, false);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
+        colIndex++;
+      }
+      drawAllTMs();
+
+    } else {
+      // ---- 裏面（横型）----
+      // TM配置辺が上辺（制御型: TM上端y = MB中心y + tmS×1.5）
+      // MB/ansStartYは表面と同じy座標系
+      // 受験番号欄なし
+
+      const frontQ = calcFrontQLandscape();
+      const remainQ = state.questionCount - frontQ;
+
+      if (remainQ <= 0) {
+        // 表面で全問収まる → 外枠のみ
+        api.setStroke(255, 0, 255, LW_OUTER);
+        api.strokeRect(outer.x1, outer.y1, outer.x2 - outer.x1, outer.y2 - outer.y1);
+        return;
+      }
+
+      // 裏面解答欄（受験番号欄なし、enStartから直接解答欄）
+      const ansStart  = enStart;
+      const colWidth  = (state.choiceCount - 1) * tmInterval;
+      const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+
+      let qi = 0, colIndex = 0;
+      while (qi < remainQ) {
+        const colBaseX = ansStart + colIndex * (colWidth + columnGap);
+        // 列の右端MB全体が収まるかチェック
+        if (colBaseX + colWidth + MB_SHORT / 2 > maxXmm) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        const frameMinX = colBaseX - MB_SHORT/2;
+        const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
+        const qThisCol  = Math.min(maxRowsPerCol, remainQ - qi);
+        for (let r = 0; r < qThisCol; r++, qi++) {
+          const cy = ansStartY + r * pitch;
+          frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
+          frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
+          drawQLabel(colBaseX, cy, `${frontQ + qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * tmInterval;
+            collectTM(cx);
+            drawMB(cx, cy, false);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
+        colIndex++;
+      }
+      drawAllTMs();
     }
-    drawAllTMs();
   }
 }
 
