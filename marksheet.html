@@ -458,7 +458,7 @@
     <div class="accordion-body" id="acc-advanced">
       <div class="ctrl-group">
         <div id="row-skipmb">
-          <div class="ctrl-label">MB開始位置 </div>
+          <div class="ctrl-label">MBインターバル </div>
           <input type="number" id="inp-skip" value="2" min="0" max="10">
         </div>
         <div id="row-maxrowsl">
@@ -592,8 +592,8 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
     document.querySelectorAll('#seg-orient button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     state.orientation = btn.dataset.val;
-    document.getElementById('lbl-colgap-unit').textContent =
-      state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
+    const lblUnit = document.getElementById('lbl-colgap-unit');
+    if (lblUnit) lblUnit.textContent = state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
     render();
   });
 });
@@ -980,6 +980,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   const FS_MB_PDF = 7 * PT2MM;
   // 問題番号ラベルのMBからのオフセット 2pt→mm
   const QLABEL_OFFSET = pitch / 2; // MBからピッチの1/2mm離す
+  const FS_QLABEL = 3; // 問題番号ラベルフォントサイズ固定 3mm (=MB_SHORT_DEFAULT×1.5)
 
   // =============================================
   // 表面の1列あたり描画可能問題数を計算
@@ -1097,13 +1098,13 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   function drawQLabel(cx, cy, text) {
     api.setFill(255, 0, 255);
     if (isPortrait && isBack) {
-      api.text(cx + MB_LONG/2 + QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'left', "'Noto Sans JP', sans-serif");
+      api.text(cx + MB_LONG/2 + QLABEL_OFFSET, cy, text, FS_QLABEL, 'left', "'Noto Sans JP', sans-serif");
     } else if (isPortrait) {
-      api.text(cx - MB_LONG/2 - QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+      api.text(cx - MB_LONG/2 - QLABEL_OFFSET, cy, text, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
     } else {
       // 横型: MBはalong方向が短辺(MB_SHORT)、perp方向が長辺(MB_LONG)
       // ラベルはalong方向（x）の左隣 → x方向オフセットはMB_SHORT/2
-      api.text(cx - MB_SHORT/2 - QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+      api.text(cx - MB_SHORT/2 - QLABEL_OFFSET, cy, text, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
     }
   }
 
@@ -1231,7 +1232,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
           frameMaxY = Math.max(frameMaxY, cy);
           // 問題番号ラベル: 選択肢①MBの左側（表面と同じ）
           api.setFill(255, 0, 255);
-          api.text(colBaseX - MB_LONG/2 - QLABEL_OFFSET, cy, `${frontQ + qi + 1}`, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+          api.text(colBaseX - MB_LONG/2 - QLABEL_OFFSET, cy, `${frontQ + qi + 1}`, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
           for (let ci = 0; ci < state.choiceCount; ci++) {
             // 左端が選択肢①（maxRowsL番MB）、右へ行くほど番号減少
             // MB内数字は表面と同様に選択肢番号（1,2,3…）
