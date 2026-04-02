@@ -21,6 +21,23 @@
     --warn: #f59e0b;
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'Noto Sans JP', sans-serif;
+    --canvas-bg: #0a0b0d;
+    --sheet-shadow: 0 8px 60px rgba(0,0,0,.8), 0 0 0 1px #333;
+  }
+
+  body.light-mode {
+    --bg: #f0f2f5;
+    --surface: #ffffff;
+    --panel: #f5f6f8;
+    --border: #d0d4de;
+    --accent: #d42f82;
+    --accent2: #009970;
+    --text: #1a1c24;
+    --text-dim: #7a8090;
+    --text-mid: #4a5068;
+    --warn: #b45309;
+    --canvas-bg: #d8dae0;
+    --sheet-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px #bbb;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -89,13 +106,24 @@
 
   .section-header {
     font-family: var(--mono);
-    font-size: 9px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 700;
     letter-spacing: 0.18em;
-    color: var(--text-dim);
+    color: var(--text-mid);
     text-transform: uppercase;
     padding: 16px 16px 8px;
     border-bottom: 1px solid var(--border);
+  }
+
+    .section-header::before {
+    background-color: var(--text-mid);
+    border-radius: 1em;
+    content: "";
+    display: inline-block;
+    height: 1.2em;
+    margin-right: .5em;
+    vertical-align: middle;
+    width: .2em;
   }
 
   .ctrl-group {
@@ -108,6 +136,7 @@
 
   .ctrl-label {
     font-size: 11px;
+    font-weight: 700;
     color: var(--text-mid);
     margin-bottom: 4px;
     display: flex;
@@ -185,25 +214,10 @@
     color: var(--accent2);
   }
 
-  .generate-btn {
-    margin: 16px 16px 0;
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    padding: 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: opacity .15s;
-    text-transform: uppercase;
-  }
-  .generate-btn:hover { opacity: .85; }
+  .generate-btn { display: none; }
 
   .pdf-btn {
-    margin: 8px 16px 0;
+    margin: 8px 16px 16px;
     background: transparent;
     border: 1px solid var(--accent2);
     color: var(--accent2);
@@ -254,7 +268,7 @@
   .canvas-area {
     flex: 1;
     overflow: auto;
-    background: #0a0b0d;
+    background: var(--canvas-bg);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -263,7 +277,7 @@
 
   #sheet-wrapper {
     background: #fff;
-    box-shadow: 0 8px 60px rgba(0,0,0,.8), 0 0 0 1px #333;
+    box-shadow: var(--sheet-shadow);
     position: relative;
     flex-shrink: 0;
   }
@@ -308,6 +322,36 @@
     color: var(--text-dim);
   }
   .cv-row span:last-child { color: var(--accent2); }
+
+  /* アコーディオン */
+  .accordion-header {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: color .15s;
+  }
+  .accordion-header:hover { color: var(--text); }
+  .accordion-header .acc-arrow {
+    font-size: 12px;
+    color: var(--accent2);
+    transition: transform .2s;
+  }
+  .accordion-header.open .acc-arrow { transform: rotate(180deg); }
+  .accordion-body {
+    display: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .accordion-body.open { display: block; }
 </style>
 </head>
 <body>
@@ -315,7 +359,12 @@
 <header>
   <div class="logo">MarkSheet</div>
   <div class="title">マークシート生成ツール</div>
-  <div class="device-badge">SECONIK SR-3500</div>
+  <!-- <div class="device-badge">SECONIK SR-3500</div> -->
+  <button id="btn-theme" title="ダーク/ライト切替" style="
+    margin-left:12px;background:transparent;border:1px solid var(--border);
+    color:var(--text-mid);font-size:15px;width:32px;height:28px;border-radius:4px;
+    cursor:pointer;line-height:1;transition:all .15s;
+  ">🌙</button>
 </header>
 
 <div class="layout">
@@ -352,20 +401,30 @@
           <button data-val="back">裏面</button>
         </div>
       </div>
-      <div>
-        <div class="ctrl-label">ピッチ <span id="lbl-pitch">0.25</span></div>
-        <select id="sel-pitch">
-          <option value="0.25">0.25</option>
-          <option value="1/6">1/6</option>
-          <option value="0.2">0.2</option>
-          <option value="0.2s">0.2s</option>
-          <option value="0.3">0.3</option>
-          <option value="0.3F">0.3F</option>
-        </select>
+      <div class="row2">
+        <div>
+          <div class="ctrl-label">ピッチ</div>
+          <select id="sel-pitch">
+            <option value="0.25">0.25</option>
+            <option value="1/6">1/6</option>
+            <option value="0.2">0.2</option>
+            <option value="0.2s">0.2s</option>
+            <option value="0.3">0.3</option>
+            <option value="0.3F">0.3F</option>
+          </select>
+        </div>
+        <div>
+          <div class="ctrl-label">TM間隔 (mm)</div>
+          <input type="number" id="inp-tmi" value="4.23" min="4.23" step="0.01">
+        </div>
       </div>
+    </div>
+    
+    <div class="section-header">受験番号欄</div>
+    <div class="ctrl-group">
       <div>
-        <div class="ctrl-label">TM間隔 (mm) <span id="lbl-tmi">4.23</span></div>
-        <input type="number" id="inp-tmi" value="4.23" min="4.23" step="0.01">
+        <div class="ctrl-label">桁数</div>
+        <input type="number" id="inp-digits" value="5" min="1" max="20">
       </div>
     </div>
 
@@ -391,51 +450,55 @@
           <input type="number" id="inp-mbshort" value="2" min="0.1" step="0.1">
         </div>
       </div>
-      <div id="row-maxrowsl">
-        <div class="ctrl-label">横型最大行数 (maxRowsL) <span id="lbl-maxrowsl">30</span></div>
-        <input type="number" id="inp-maxrowsl" value="30" min="1" max="100">
-      </div>
-      <div id="row-skipmb">
-        <div class="ctrl-label">開始オフセット (skipMB) <span id="lbl-skip">2</span></div>
-        <input type="number" id="inp-skip" value="2" min="0" max="10">
-      </div>
-      <div class="row2">
-        <div>
-          <div class="ctrl-label">列ギャップ<span id="lbl-colgap-unit">(pitch×)</span></div>
-          <input type="number" id="inp-colgap" value="2" min="0" step="0.5">
+    </div>
+
+    <div class="accordion-header" data-target="acc-advanced">
+      詳細設定 <span class="acc-arrow">▼</span>
+    </div>
+    <div class="accordion-body" id="acc-advanced">
+      <div class="ctrl-group">
+        <div id="row-skipmb">
+          <div class="ctrl-label">MB開始位置 </div>
+          <input type="number" id="inp-skip" value="2" min="0" max="10">
         </div>
-        <div>
-          <div class="ctrl-label">セクションギャップ (tmInterval×)</div>
-          <input type="number" id="inp-secgap" value="2" min="0" step="0.5">
+        <div id="row-maxrowsl">
+          <div class="ctrl-label">MB最大</div>
+          <input type="number" id="inp-maxrowsl" value="30" min="1" max="100">
+        </div>
+        <div class="row2">
+          <div>
+            <div class="ctrl-label">解答欄インターバル</div>
+            <input type="number" id="inp-colgap" value="2" min="0" step="0.5">
+          </div>
+          <div>
+            <div class="ctrl-label">受験番号インターバル</div>
+            <input type="number" id="inp-secgap" value="2" min="0" step="0.5">
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="section-header">受験番号欄</div>
-    <div class="ctrl-group">
-      <div>
-        <div class="ctrl-label">桁数 <span id="lbl-digits">5</span></div>
-        <input type="number" id="inp-digits" value="5" min="1" max="20">
-      </div>
+    <div class="accordion-header" data-target="acc-pitch">
+      ピッチの仕様参照 <span class="acc-arrow">▼</span>
     </div>
-
-    <div class="section-header">ピッチマスター参照</div>
-    <div class="ctrl-group">
-      <table class="pitch-table" id="pitch-table">
-        <thead>
-          <tr><th>ピッチ</th><th>pitch</th><th>firstX</th><th>maxMB</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <div class="computed-vals" id="computed-vals"></div>
+    <div class="accordion-body" id="acc-pitch">
+      <div class="ctrl-group">
+        <table class="pitch-table" id="pitch-table">
+          <thead>
+            <tr><th>ピッチ</th><th>pitch</th><th>firstX</th><th>maxMB</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="computed-vals" id="computed-vals"></div>
+      </div>
     </div>
 
     <button class="generate-btn" id="btn-gen">▶ プレビュー更新</button>
-    <button class="pdf-btn" id="btn-pdf">⬇ PDF出力</button>
     <div class="warn-box" id="warn-box" style="margin-top:12px">
       <div class="warn-title">警告</div>
       <ul id="warn-list"></ul>
     </div>
+    <button class="pdf-btn" id="btn-pdf">⬇ PDF出力</button>
   </div>
 
   <!-- RIGHT: Canvas -->
@@ -531,8 +594,6 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
     state.orientation = btn.dataset.val;
     document.getElementById('lbl-colgap-unit').textContent =
       state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
-    document.getElementById('row-maxrowsl').style.display =
-      state.orientation === 'landscape' ? '' : 'none';
     render();
   });
 });
@@ -576,7 +637,6 @@ document.querySelectorAll('#seg-tmtype button').forEach(btn => {
 // Select
 document.getElementById('sel-pitch').addEventListener('change', e => {
   state.pitchName = e.target.value;
-  document.getElementById('lbl-pitch').textContent = e.target.value;
   // maxRowsLをピッチのデフォルト値にリセット
   const defaultRows = PITCH_MASTER[e.target.value].maxRowsL;
   state.maxRowsL = defaultRows;
@@ -585,6 +645,17 @@ document.getElementById('sel-pitch').addEventListener('change', e => {
   updatePitchTable();
   render();
 });
+
+// ① ダーク/ライトモード切替
+(function() {
+  const btn = document.getElementById('btn-theme');
+  let isLight = false;
+  btn.addEventListener('click', () => {
+    isLight = !isLight;
+    document.body.classList.toggle('light-mode', isLight);
+    btn.textContent = isLight ? '☀️' : '🌙';
+  });
+})();
 
 // Numbers
 function bindNum(id, key, label) {
@@ -608,6 +679,16 @@ bindNum('inp-secgap',  'sectionGapMult');
 bindNum('inp-digits',  'examDigits',     'lbl-digits');
 
 document.getElementById('btn-gen').addEventListener('click', render);
+
+// アコーディオン
+document.querySelectorAll('.accordion-header').forEach(header => {
+  header.addEventListener('click', () => {
+    const target = document.getElementById(header.dataset.target);
+    const isOpen = target.classList.contains('open');
+    target.classList.toggle('open', !isOpen);
+    header.classList.toggle('open', !isOpen);
+  });
+});
 
 // =============================================
 // SCALE: mm -> canvas pixels
@@ -814,37 +895,55 @@ function exportPDF() {
   const ofx = (paper.b4w - paper.a4w) / 2;
   const ofy = (paper.b4h - paper.a4h) / 2;
 
-  // A4外枠: マゼンタ100% CMYK(0,100,0,0) 0.4pt
-  doc.setDrawColor(0, 100, 0, 0); // jsPDF CMYK
-  doc.setLineWidth(0.4 / 2.835);
-  doc.rect(ofx, ofy, paper.a4w, paper.a4h, 'S');
+  // PDF drawing API wrapper (CMYK) — docを引数で受け取れるよう関数化
+  function makePdfAPI(doc) {
+    return {
+      setFill: (r,g,b) => {
+        if (r===0 && g===0 && b===0) {
+          doc.setFillColor(0, 0, 0, 100);
+          doc.setTextColor(0, 0, 0, 100);
+        } else if (r===255 && g===0 && b===255) {
+          doc.setFillColor(0, 100, 0, 0);
+          doc.setTextColor(0, 100, 0, 0);
+        } else {
+          doc.setFillColor(r, g, b);
+          doc.setTextColor(r, g, b);
+        }
+      },
+      setStroke: (r,g,b,w) => {
+        if (r===0 && g===0 && b===0)          doc.setDrawColor(0, 0, 0, 100);
+        else if (r===255 && g===0 && b===255) doc.setDrawColor(0, 100, 0, 0);
+        else doc.setDrawColor(r, g, b);
+        doc.setLineWidth(w);
+      },
+      rect:  (x,y,w,h)     => { doc.rect(ofx+x, ofy+y, w, h, 'F'); },
+      strokeRect: (x,y,w,h)=> { doc.rect(ofx+x, ofy+y, w, h, 'S'); },
+      ellipse: (cx,cy,rx,ry,fill) => {
+        doc.ellipse(ofx+cx, ofy+cy, rx, ry, fill ? 'F' : 'S');
+      },
+      text: (x,y,str,sizeMm,align,_font) => {
+        doc.setFontSize(sizeMm * 2.835);
+        doc.text(String(str), ofx+x, ofy+y, { align, baseline: 'middle' });
+      },
+    };
+  }
 
-  // PDF drawing API wrapper (CMYK)
-  const pdfAPI = {
-    // r,g,b は内部的にマゼンタ(255,0,255)か黒(0,0,0)を識別してCMYKに変換
-    setFill: (r,g,b) => {
-      if (r===0 && g===0 && b===0)       doc.setFillColor(0, 0, 0, 100);   // K100%
-      else if (r===255 && g===0 && b===255) doc.setFillColor(0, 100, 0, 0); // M100%
-      else doc.setFillColor(r, g, b);
-    },
-    setStroke: (r,g,b,w) => {
-      if (r===0 && g===0 && b===0)          doc.setDrawColor(0, 0, 0, 100);
-      else if (r===255 && g===0 && b===255) doc.setDrawColor(0, 100, 0, 0);
-      else doc.setDrawColor(r, g, b);
-      doc.setLineWidth(w);
-    },
-    rect:  (x,y,w,h)     => { doc.rect(ofx+x, ofy+y, w, h, 'F'); },
-    strokeRect: (x,y,w,h)=> { doc.rect(ofx+x, ofy+y, w, h, 'S'); },
-    ellipse: (cx,cy,rx,ry,fill) => {
-      doc.ellipse(ofx+cx, ofy+cy, rx, ry, fill ? 'F' : 'S');
-    },
-    text: (x,y,str,sizeMm,align,_font) => {
-      doc.setFontSize(sizeMm * 2.835);
-      doc.text(String(str), ofx+x, ofy+y, { align });
-    },
-  };
+  function drawPageFrame(doc) {
+    doc.setDrawColor(0, 100, 0, 0);
+    doc.setLineWidth(0.4 / 2.835);
+    doc.rect(ofx, ofy, paper.a4w, paper.a4h, 'S');
+  }
 
-  drawLayout(pdfAPI, p, paper, isPortrait, state.side === 'back');
+  // 表面
+  drawPageFrame(doc);
+  drawLayout(makePdfAPI(doc), p, paper, isPortrait, false);
+
+  // 裏面あり → 2ページ目
+  if (state.hasBack) {
+    doc.addPage([paper.b4w, paper.b4h], orientation);
+    drawPageFrame(doc);
+    drawLayout(makePdfAPI(doc), p, paper, isPortrait, true);
+  }
 
   const orient = isPortrait ? 'portrait' : 'landscape';
   doc.save(`marksheet_${orient}_${state.pitchName}.pdf`);
@@ -879,6 +978,8 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   const LW_OUTER = 0.4 * PT2MM;
   const LW_MB    = 0.6 * PT2MM;
   const FS_MB_PDF = 7 * PT2MM;
+  // 問題番号ラベルのMBからのオフセット 2pt→mm
+  const QLABEL_OFFSET = pitch / 2; // MBからピッチの1/2mm離す
 
   // =============================================
   // 表面の1列あたり描画可能問題数を計算
@@ -965,11 +1066,11 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
         api.rect(tx, ac - tmOffset, tmL, tmS);
       } else {
         // 横型: along=右→
-        // TM along方向オフセット（制御型/直下型）
+        // TM along方向x（制御型/直下型）: 表面・裏面共通
         const txOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
-        const tx = ac - txOffset;
-        // TM perp方向（y）の位置
-        // 表面・裏面共通: 下辺基準 outer.y2 - tmPos - tmL
+        const tx =  !isBack ? ac - txOffset: ac + txOffset - tmS ;
+        // TM perp方向y: 表面・裏面共通
+        // 下辺基準 outer.y2 - tmPos - tmL
         const ty = outer.y2 - tmPos - tmL;
         api.rect(tx, ty, tmS, tmL);
       }
@@ -990,14 +1091,19 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   }
 
   // 問題番号ラベル
-  // 縦型裏面: 選択肢が左→なので選択肢1MBの右にラベル
-  // それ以外: 選択肢1MBの左にラベル
+  // 縦型裏面: 選択肢①MBの右にラベル（MB_LONG/2 + offset）
+  // 縦型表面・横型: 選択肢①MBの左にラベル
+  // 横型はMBが縦長（perp=長辺）なのでx方向オフセットはMB_SHORT/2を使う
   function drawQLabel(cx, cy, text) {
     api.setFill(255, 0, 255);
     if (isPortrait && isBack) {
-      api.text(cx + MB_LONG/2 + 0.5, cy, text, MB_SHORT * 1.5, 'left', "'Noto Sans JP', sans-serif");
+      api.text(cx + MB_LONG/2 + QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'left', "'Noto Sans JP', sans-serif");
+    } else if (isPortrait) {
+      api.text(cx - MB_LONG/2 - QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
     } else {
-      api.text(cx - MB_LONG/2 - 0.5, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+      // 横型: MBはalong方向が短辺(MB_SHORT)、perp方向が長辺(MB_LONG)
+      // ラベルはalong方向（x）の左隣 → x方向オフセットはMB_SHORT/2
+      api.text(cx - MB_SHORT/2 - QLABEL_OFFSET, cy, text, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
     }
   }
 
@@ -1125,7 +1231,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
           frameMaxY = Math.max(frameMaxY, cy);
           // 問題番号ラベル: 選択肢①MBの左側（表面と同じ）
           api.setFill(255, 0, 255);
-          api.text(colBaseX - MB_LONG/2 - 0.5, cy, `${frontQ + qi + 1}`, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
+          api.text(colBaseX - MB_LONG/2 - QLABEL_OFFSET, cy, `${frontQ + qi + 1}`, MB_SHORT * 1.5, 'right', "'Noto Sans JP', sans-serif");
           for (let ci = 0; ci < state.choiceCount; ci++) {
             // 左端が選択肢①（maxRowsL番MB）、右へ行くほど番号減少
             // MB内数字は表面と同様に選択肢番号（1,2,3…）
@@ -1254,7 +1360,6 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
 // Init
 // =============================================
 initPitchTable();
-document.getElementById('row-maxrowsl').style.display = 'none';
 render();
 </script>
 </body>
