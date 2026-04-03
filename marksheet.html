@@ -376,8 +376,8 @@
       <div>
         <div class="ctrl-label">向き</div>
         <div class="seg" id="seg-orient">
-          <button class="active" data-val="portrait">縦型 A4</button>
-          <button data-val="landscape">横型 A4</button>
+          <button class="active" data-val="portrait">縦型</button>
+          <button data-val="landscape">横型</button>
         </div>
       </div>
       <div>
@@ -443,7 +443,7 @@
     <div class="ctrl-group">
       <div>
         <div class="ctrl-label">桁数</div>
-        <input type="number" id="inp-digits" value="5" min="1" max="20">
+        <input type="number" id="inp-digits" value="5" min="1">
       </div>
     </div>
 
@@ -452,11 +452,11 @@
       <div class="row2">
         <div>
           <div class="ctrl-label">問題数</div>
-          <input type="number" id="inp-qcount" value="50" min="1" max="300">
+          <input type="number" id="inp-qcount" value="50" min="1">
         </div>
         <div>
           <div class="ctrl-label">選択肢数</div>
-          <input type="number" id="inp-ccount" value="5" min="1" max="20">
+          <input type="number" id="inp-ccount" value="5" min="1">
         </div>
       </div>
       <div class="row2">
@@ -477,12 +477,12 @@
     <div class="accordion-body" id="acc-advanced">
       <div class="ctrl-group">
         <div id="row-skipmb">
-          <div class="ctrl-label">MBインターバル </div>
-          <input type="number" id="inp-skip" value="2" min="0" max="10">
+          <div class="ctrl-label">MBインターバル</div>
+          <input type="number" id="inp-skip" value="1" min="0">
         </div>
         <div id="row-maxrowsl">
-          <div class="ctrl-label">MB最大 <span id="lbl-maxrowsl">30</span></div>
-          <input type="number" id="inp-maxrowsl" value="30" min="1" max="100">
+          <div class="ctrl-label">MB最大</div>
+          <input type="number" id="inp-maxrowsl" value="30" min="1">
         </div>
         <div class="row2">
           <div>
@@ -562,7 +562,7 @@ let state = {
   tmInterval: 4.23,
   questionCount: 50,
   choiceCount: 5,
-  skipMB: 2,
+  skipMB: 1,
   columnGapMult: 1,
   sectionGapMult: 1,
   examDigits: 5,
@@ -661,6 +661,7 @@ document.querySelectorAll('#seg-tmtype button').forEach(btn => {
 document.getElementById('sel-pitch').addEventListener('change', e => {
   state.pitchName = e.target.value;
   updatePitchTable();
+  applyAutoSkipMB();
   applyAutoMaxRowsL();
   render();
 });
@@ -780,6 +781,17 @@ function applyAutoMaxRowsL() {
   if (lbl) lbl.textContent = val;
 }
 
+// MBインターバル（skipMB）自動設定
+// 0.25ピッチ → 1、それ以外 → 0
+function applyAutoSkipMB() {
+  const val = state.pitchName === '0.25' ? 1 : 0;
+  state.skipMB = val;
+  const inp = document.getElementById('inp-skip');
+  const lbl = document.getElementById('lbl-skip');
+  if (inp) inp.value = val;
+  if (lbl) lbl.textContent = val;
+}
+
 
 // =============================================
 let MM2PX = 3.7795; // default, recalculated
@@ -791,7 +803,8 @@ function mm(v) { return v * MM2PX; }
 // =============================================
 function checkWarnings(p, outer) {
   const warns = [];
-  if (state.tmInterval < 4.23) warns.push('TM間隔が最小値(4.23mm)未満です');
+  if (state.tmType === 'control' &&state.tmInterval < 4.23) warns.push('TM間隔が最小値(4.23mm)未満です');
+  if (state.tmType !== 'control' &&state.tmInterval < 2.21) warns.push('TM間隔が最小値(2.21mm)未満です');
 
   if (state.orientation === 'landscape') {
     // 横型: 数字9のy check
@@ -826,11 +839,12 @@ function checkWarnings(p, outer) {
     const enEndY    = enStart + 9 * tmInterval;
     const ansStartY = enEndY + sectionGap;
     const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
-    const maxXmm    = outer.x2 - MARGIN - MB_LONG / 2;
     const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
-    const baseX     = outer.x1 + firstX + skipMB * pitch;
+    // 描画側と同じ: perpMax（maxRowsL基準）で列数を制限
+    const baseX    = outer.x1 + firstX + skipMB * pitch;
+    const perpMax  = outer.x1 + firstX + (maxRowsL - 1) * pitch;
     let frontCols = 0;
-    while (baseX + frontCols * (colWidth + columnGap) + colWidth + MB_LONG / 2 <= maxXmm) frontCols++;
+    while (baseX + frontCols * (colWidth + columnGap) + colWidth <= perpMax) frontCols++;
     if (frontCols === 0) frontCols = 1;
     totalCapacity += qPerCol * frontCols;
 
@@ -1131,16 +1145,17 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   // 裏面: 表面の描画問題数を実際に数える（縦型用）
   // =============================================
   function calcFrontQPortrait() {
+    // along方向（問題数）は座標ベースで制限
     const enEndY    = enStart + 9 * tmInterval;
     const ansStartY = enEndY + sectionGap;
     const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
     const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
-    // 表面で何列描けるか（列全体が収まるかチェック）
+    // perp方向（列数）はmaxRowsLで制限: 列右端MB中心がmaxRowsL範囲内かチェック
     const colWidth2 = (state.choiceCount - 1) * pitch;
     const baseX2    = outer.x1 + firstX + skipMB * pitch;
-    const maxXmm2   = outer.x2 - MARGIN - MB_LONG / 2;
+    const perpMax2  = outer.x1 + firstX + (maxRowsL - 1) * pitch;
     let cols = 0;
-    while (baseX2 + cols * (colWidth2 + columnGap) + colWidth2 + MB_LONG / 2 <= maxXmm2) cols++;
+    while (baseX2 + cols * (colWidth2 + columnGap) + colWidth2 <= perpMax2) cols++;
     if (cols === 0) cols = 1;
     return Math.min(qPerCol * cols, state.questionCount);
   }
@@ -1259,15 +1274,24 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
       const ansStartY = enEndY + sectionGap;
       const colWidth  = (state.choiceCount - 1) * pitch;
       const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
-      const maxXmm    = outer.x2 - MARGIN - MB_LONG / 2;
+      // along方向（問題数）は座標ベースで制限
       const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, state.questionCount);
+      // perp方向（列）はmaxRowsLで制限:
+      // perpBase = firstX + skipMB×pitch からの使用済みMB数 + 列内MB数 ≤ maxRowsL
+      // → 列右端のperp座標(MB中心) = perpBase + colIndex×(colWidth+columnGap) + colWidth
+      //   = outer.x1 + firstX + (skipMB + colIndex×choiceCount + (colIndex-1)×gap_in_mb + choiceCount-1) × pitch ...
+      // シンプルに: outer.x1 + firstX + (使用MB番号) × pitch ≤ outer.x1 + firstX + maxRowsL × pitch
+      // 各列の右端MB番号(1-indexed) = skipMB + colIndex×choiceCount + (choiceCount-1) + 1
+      //   = skipMB + (colIndex+1)×choiceCount
+      // ただしcolumnGapは選択肢数ではなくmm単位なので、右端x座標で判定する方が確実
+      const perpMax   = outer.x1 + firstX + (maxRowsL - 1) * pitch; // 最大MB中心x
 
       let qi = 0, colIndex = 0;
       const colPositions = [];
       while (qi < state.questionCount) {
         const colBaseX = perpBase + colIndex * (colWidth + columnGap);
-        // 列の右端MB全体が収まるかチェック
-        if (colBaseX + colWidth + MB_LONG / 2 > maxXmm) break;
+        // 列の右端MB中心がmaxRowsL範囲内かチェック（MB最大数ベース）
+        if (colBaseX + colWidth > perpMax) break;
         let frameMinY = Infinity, frameMaxY = -Infinity;
         for (let r = 0; r < qPerCol && qi < state.questionCount; r++, qi++) {
           const cy = ansStartY + r * tmInterval;
@@ -1311,6 +1335,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
       const ansStartY = enStart;
       const colWidth  = (state.choiceCount - 1) * pitch;
       const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      // along方向（問題数）は座標ベースで制限
       const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, remainQ);
 
       // 裏面perp基準（人間視点での左右）:
@@ -1474,6 +1499,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
 // Init
 // =============================================
 initPitchTable();
+applyAutoSkipMB();
 applyAutoMaxRowsL();
 render();
 </script>

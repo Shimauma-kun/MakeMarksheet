@@ -1,8 +1,8 @@
 # マークシート生成ツール 仕様書
 
 **対象機器:** セコニック SR-3500  
-**出力:** アートボード上にA4中央配置のプレビュー（Canvas描画）およびPDF出力  
-**対応向き:** 縦型A4 / 横型A4  
+**出力:** アートボード上に外枠中央配置のプレビュー（Canvas描画）およびPDF出力  
+**対応向き:** 縦型 / 横型  
 **対応ピッチ:** 0.25 / 1/6 / 0.2 / 0.2s / 0.3 / 0.3F
 
 ---
@@ -13,13 +13,13 @@
 |---|---|---|
 | タイミングマーク | TM | スキャナーがMBの位置を検出するための黒塗り矩形。外枠の辺に沿って等間隔に並ぶ。 |
 | マークボックス | MB | 受験者が鉛筆でマークする楕円形の枠。 |
-| TM間隔 | tmInterval | TMが並ぶ方向（along方向）のTM中心間距離（mm）。最小値4.23mm。 |
+| TM間隔 | tmInterval | TMが並ぶ方向（along方向）のTM中心間距離（mm）。 |
 | MB間隔 | pitch | MBが並ぶ方向（perp方向）のMB中心間距離（mm）。ピッチマスターで定義。 |
 | along方向 | along | TMが並ぶ方向。縦型＝下↓（y増加）、横型＝右→（x増加）。 |
 | perp方向 | perp | along方向と直交する方向。縦型＝左右（x方向）、横型＝上下（y方向）。 |
-| 外枠 | outer | 印刷領域枠（マージンなし）。座標計算の基準。サイズはユーザーが設定。 |
+| 外枠 | outer | 印刷領域枠（マージンなし）。サイズはユーザーが設定。座標計算の基準。 |
 | 物理MB番号 | - | スキャナー基準のMB番号。TM配置辺に最も近いMBが第1MB。 |
-| 開始オフセット | skipMB | TM側から使用しないMBの個数。物理第1〜第skipMB番を除外。 |
+| MBインターバル | skipMB | TM側から使用しないMBの個数。物理第1〜第skipMB番を除外。 |
 | 表面 | front | シートの表側。受験番号欄あり。縦型TM=左側、横型TM=下側（人間視点）。 |
 | 裏面 | back | シートの裏側。受験番号欄なし。表面の続き番号から解答欄を配置。縦型TM=右側、横型TM=下側（表面と同じ辺）。 |
 
@@ -38,7 +38,7 @@
 
 ## 3. 座標系
 
-- 原点はA4外枠の左上隅（outer.x1=0, outer.y1=0）
+- 原点は外枠の左上隅（outer.x1=0, outer.y1=0）
 - Web座標系：右方向がx増加、下方向がy増加
 - 人間視点の「左」= x小、「右」= x大、「上」= y小、「下」= y大
 
@@ -83,16 +83,14 @@
 
 スキャナー仕様に基づく固定パラメータ。ユーザーは変更不可。
 
-| ピッチ名 | pitch(mm) | firstX(mm) | maxMB | tmS(mm) | tmL(mm) | tmPos(mm) | maxRowsL（参考） |
-|---|---|---|---|---|---|---|---|
-| 0.25 | 6.35 | 6.35 | 33 | 0.89 | 5.9 | -2.0 | 30 |
-| 1/6 | 4.233 | 11.43 | 48 | 1.27 | 3.81 | 5.085 | 43 |
-| 0.2 | 5.08 | 11.75 | 40 | 0.89 | 5.9 | -2.0 | 36 |
-| 0.2s | 5.08 | 12.7 | 40 | 0.89 | 3.81 | 5.095 | 36 |
-| 0.3 | 7.62 | 14.50 | 27 | 0.89 | 7.0 | -2.0 | 24 |
-| 0.3F | 7.62 | 17.78 | 24 | 0.5 | 5.08 | 7.62 | 24 |
-
-※ maxRowsLは外枠サイズから自動計算されるため、ピッチマスターの値は参考値。
+| ピッチ名 | pitch(mm) | firstX(mm) | maxMB | tmS(mm) | tmL(mm) | tmPos(mm) |
+|---|---|---|---|---|---|---|
+| 0.25 | 6.35 | 6.35 | 33 | 0.89 | 5.9 | -2.0 |
+| 1/6 | 4.233 | 11.43 | 48 | 1.27 | 3.81 | 5.085 |
+| 0.2 | 5.08 | 11.75 | 40 | 0.89 | 5.9 | -2.0 |
+| 0.2s | 5.08 | 12.7 | 40 | 0.89 | 3.81 | 5.095 |
+| 0.3 | 7.62 | 14.50 | 27 | 0.89 | 7.0 | -2.0 |
+| 0.3F | 7.62 | 17.78 | 24 | 0.5 | 5.08 | 7.62 |
 
 **パラメータの意味:**
 
@@ -147,6 +145,10 @@ TM perp方向座標（方式共通）:
 横型（表面・裏面共通）: TM上端y = outer.y2 − tmPos − tmL  ※tmPos<0なら外枠外（下）
 ```
 
+**TMの最小間隔:**
+- 制御型: 4.23mm未満で警告
+- 直下型: 2.21mm未満で警告
+
 ---
 
 ## 8. along方向の両端余白（MARGIN）
@@ -160,7 +162,7 @@ enStart（along方向の開始MB中心）= MARGIN + tmS × 1.5 + MB_SHORT / 2
 
 ---
 
-## 9. skipMBとmaxRowsLの役割
+## 9. skipMB（MBインターバル）とmaxRowsL（MB最大）の役割
 
 perp方向のMB使用範囲を両端から制限する。
 
@@ -172,11 +174,22 @@ TM側（使用不可）        使用範囲                TM反対側（使用�
 
 | 向き・面 | TM側 | 使用開始MB | 使用終了MB |
 |---|---|---|---|
-| 縦型表面 | 左 | 左から第(skipMB+1)番 | 右方向へ自由展開 |
+| 縦型表面 | 左 | 左から第(skipMB+1)番 | 右方向へ列展開 |
 | 縦型裏面 | 右 | 左から第maxRowsL番 | 右から第(skipMB+1)番 |
 | 横型（表・裏） | 下 | 上から第maxRowsL番（ansStartY） | 下から第(skipMB+1)番 |
 
-### 9.1 maxRowsLの自動計算（calcAutoMaxRowsL）
+### 9.1 skipMBの自動設定（applyAutoSkipMB）
+
+ピッチ変更時に自動設定される。
+
+| ピッチ | skipMB デフォルト値 |
+|---|---|
+| 0.25 | 1 |
+| 1/6 / 0.2 / 0.2s / 0.3 / 0.3F | 0 |
+
+ユーザーによる手動上書きも可能。
+
+### 9.2 maxRowsLの自動計算（calcAutoMaxRowsL）
 
 外枠サイズ・ピッチ・向きが変わるたびに自動計算される。
 
@@ -190,12 +203,12 @@ maxRowsL = 収まる最大数 − 1  （TM反対側1個を除外）
            ※最小値は1
 ```
 
-**自動計算のタイミング:**
+**自動計算のタイミング（skipMB・maxRowsL共通）:**
 - 初期化時（Init）
-- ピッチ変更時
-- 向き変更時
-- 外枠プリセット変更時
-- カスタムサイズ入力時
+- ピッチ変更時（skipMBはピッチ基準、maxRowsLは外枠・ピッチ・向き基準）
+- 外枠プリセット変更時（maxRowsLのみ）
+- カスタムサイズ入力時（maxRowsLのみ）
+- 向き変更時（maxRowsLのみ）
 
 ユーザーによる手動上書きも可能。
 
@@ -228,6 +241,7 @@ sectionGap（受験番号インターバル、受験番号欄〜解答欄間）:
 
 ```
 perpBase = outer.x1 + firstX + skipMB × pitch   （選択肢①のx）
+perpMax  = outer.x1 + firstX + (maxRowsL − 1) × pitch  （使用可能な最大MB中心x）
 
 選択肢ci: MB中心x = colBaseX + ci × pitch
           colBaseX = perpBase + colIndex × (colWidth + columnGap)
@@ -236,7 +250,7 @@ perpBase = outer.x1 + firstX + skipMB × pitch   （選択肢①のx）
 問題番号qi: MB中心y = ansStartY + r × tmInterval
             ansStartY = enStart + 9 × tmInterval + sectionGap
 
-列右端チェック: colBaseX + colWidth + MB_LONG/2 ≤ outer.x2 − MARGIN − MB_LONG/2
+列右端チェック: colBaseX + colWidth ≤ perpMax
   → 超える場合はその列ごと描画しない（裏面へ）
 ```
 
@@ -259,7 +273,7 @@ perpBase = outer.x1 + firstX + skipMB × pitch   （選択肢①のx）
 列右端チェック: colBaseX + colWidth + MB_LONG/2 + PAD ≤ backRightLimit
   → 超える場合はその列ごと描画しない
 
-問題番号ラベル: 選択肢①MBの右側（cx + MB_LONG/2 + QLABEL_OFFSET、left揃え）
+問題番号ラベル: 選択肢①MBの左側（cx − MB_LONG/2 − QLABEL_OFFSET、right揃え）
 問題番号: 表面の続き番号（frontQ + qi + 1）
 MB内数字: 選択肢番号（ci + 1）
 列の展開方向: 右（x増加）
@@ -270,6 +284,7 @@ MB内数字: 選択肢番号（ci + 1）
 ```
 ansStartY = outer.y2 − firstX − (maxRowsL − 1) × pitch   （第maxRowsL番MB・固定）
 maxRowsPerCol = maxRowsL − skipMB   （1列あたりの最大問題数）
+maxXmm = outer.x2 − MARGIN − tmS × 1.5 − MB_SHORT / 2
 
 ansStart = enStart + (examDigits − 1) × tmInterval + sectionGap
 
@@ -279,7 +294,7 @@ ansStart = enStart + (examDigits − 1) × tmInterval + sectionGap
 
 問題番号qi: MB中心y = ansStartY + r × pitch
 
-列右端チェック: colBaseX + colWidth + MB_SHORT/2 ≤ outer.x2 − MARGIN − tmS × 1.5 − MB_SHORT/2
+列右端チェック: colBaseX + colWidth + MB_SHORT/2 ≤ maxXmm
   → 超える場合はその列ごと描画しない（裏面へ）
 ```
 
@@ -320,15 +335,15 @@ ansStart = enStart   （sectionGapなし）
 
 | 条件 | ラベルx位置 | 揃え |
 |---|---|---|
-| 縦型裏面 | cx + MB_LONG/2 + QLABEL_OFFSET | left |
+| 縦型裏面 | cx − MB_LONG/2 − QLABEL_OFFSET | right |
 | 縦型表面 | cx − MB_LONG/2 − QLABEL_OFFSET | right |
 | 横型（表面・裏面） | cx − MB_SHORT/2 − QLABEL_OFFSET | right |
 
-横型はMBが縦長楕円のため、along方向（x）の幅はMB_SHORT。そのためx方向のオフセットにはMB_SHORT/2を使用する。
+横型はMBが縦長楕円のため、along方向（x）の幅はMB_SHORT。
 
 ```
 QLABEL_OFFSET = pitch / 2 （mm）
-フォントサイズ = MB_SHORT × 1.5 mm
+フォントサイズ = 3mm（固定）
 フォント = Noto Sans JP
 ```
 
@@ -344,10 +359,10 @@ ansStartY = enEndY + sectionGap
 maxYmm    = outer.y2 − MARGIN − tmS × 1.5 − MB_SHORT / 2
 qPerCol   = floor((maxYmm − ansStartY) / tmInterval) + 1
 
-baseX  = outer.x1 + firstX + skipMB × pitch
-maxXmm = outer.x2 − MARGIN − MB_LONG / 2
-cols   = baseX + cols×(colWidth+columnGap) + colWidth + MB_LONG/2 ≤ maxXmm を満たす列数
-         ※ cols=0 の場合は cols=1 として扱う
+baseX   = outer.x1 + firstX + skipMB × pitch
+perpMax = outer.x1 + firstX + (maxRowsL − 1) × pitch
+cols    = baseX + cols×(colWidth+columnGap) + colWidth ≤ perpMax を満たす列数
+          ※ cols=0 の場合は cols=1 として扱う
 
 frontQ = min(qPerCol × cols, questionCount)
 ```
@@ -388,7 +403,7 @@ frontQ = min(qPerCol × max(cols, 1), questionCount)
 | 外枠 | 0.4pt（= 0.4/2.835 mm） |
 | MB（楕円） | 0.6pt・塗りなし |
 | MB内数字 | 7pt（= 7/2.835 mm）・MSゴシック・center揃え・y座標はMB中心（baseline: 'middle'） |
-| 問題番号ラベル | MB_SHORT × 1.5 mm・Noto Sans JP |
+| 問題番号ラベル | 3mm固定・Noto Sans JP |
 | 枠線（受験番号欄・解答欄） | 0.4pt・パディング PAD=2mm |
 
 ### 16.3 MB内数字
@@ -412,7 +427,7 @@ frontQ = min(qPerCol × max(cols, 1), questionCount)
 
 - 受験番号欄なし、解答欄は enStart から直接開始
 - 問題番号は表面の続き番号（frontQ + 1 から）
-- 全問が表面に収まる場合（remainQ ≤ 0）はA4外枠のみ描画
+- 全問が表面に収まる場合（remainQ ≤ 0）は外枠のみ描画
 
 ### 17.3 はみ出し時の挙動
 
@@ -421,33 +436,37 @@ frontQ = min(qPerCol × max(cols, 1), questionCount)
 
 ---
 
-## 18. PDF出力仕様
+## 18. バリデーション・警告
+
+| 条件 | 警告内容 |
+|---|---|
+| 制御型かつ tmInterval < 4.23mm | TM間隔が最小値(4.23mm)未満です |
+| 直下型かつ tmInterval < 2.21mm | TM間隔が最小値(2.21mm)未満です |
+| 横型受験番号欄の数字9が外枠外 | 受験番号欄の数字9行が外枠外にはみ出します |
+| 表面＋裏面の総収容数 < 問題数 | マークがはみ出ています |
+
+**警告とプレビューの整合性:**  
+縦型表面の収容数計算は描画側と同じ `perpMax`（maxRowsL基準）で統一。
+
+```
+横型受験番号欄チェック（固定値29を使用）:
+  examTopY = outer.y2 − firstX − 29 × pitch
+  y9 = examTopY + 9 × pitch
+  警告条件: y9 > outer.y2
+```
+
+---
+
+## 19. PDF出力仕様
 
 - ライブラリ: jsPDF（クライアントサイド）
 - 用紙サイズ: アートボードサイズ（セクション4.2参照）
 - 単位: mm
 - カラー: CMYK（マゼンタ=CMYK(0,100,0,0)、黒=CMYK(0,0,0,100)）
 - ファイル名: `marksheet_{orientation}_{pitchName}.pdf`
-- **表面は常に出力（1ページ目）。hasBack=trueのとき裏面を2ページ目として追加。**
+- 表面は常に出力（1ページ目）。hasBack=trueのとき裏面を2ページ目として追加。
 - 描画ロジック: Canvas・PDF共通の `drawLayout(api)` 関数で統一
 - MB内数字のy座標: `baseline: 'middle'` 指定によりMB中心に配置（Canvasと同一）
-
----
-
-## 19. バリデーション・警告
-
-| 条件 | 警告内容 |
-|---|---|
-| tmInterval < 4.23mm | TM間隔が最小値(4.23mm)未満です |
-| 横型受験番号欄の数字9が外枠外 | 受験番号欄の数字9行が外枠外にはみ出します |
-| 表面＋裏面の総収容数 < 問題数 | マークがはみ出ています |
-
-横型受験番号欄チェック（固定値29を使用）:
-```
-examTopY = outer.y2 − firstX − 29 × pitch
-y9 = examTopY + 9 × pitch
-警告条件: y9 > outer.y2
-```
 
 ---
 
@@ -462,17 +481,17 @@ y9 = examTopY + 9 × pitch
 | tmType | control | 基本設定 | TM配置方式（制御型 / 直下型） |
 | hasBack | false | 基本設定 | 裏面あり / なし |
 | side | front | 基本設定 | 表示面（表面 / 裏面）。hasBack=trueのときのみ表示 |
-| pitchName | 0.25 | 基本設定（ピッチとTM間隔を横並び） | ピッチ種別。変更時にmaxRowsLを自動計算してrender() |
-| tmInterval | 4.23mm | 基本設定（ピッチとTM間隔を横並び） | TM間隔。最小値4.23mm |
+| pitchName | 0.25 | 基本設定（ピッチとTM間隔を横並び） | ピッチ種別。変更時にskipMB・maxRowsLを自動設定してrender() |
+| tmInterval | 4.23mm | 基本設定（ピッチとTM間隔を横並び） | TM間隔 |
 | examDigits | 5 | 受験番号欄 | 桁数 |
 | questionCount | 50 | 解答欄 | 問題数 |
 | choiceCount | 5 | 解答欄 | 選択肢数 |
 | mbLong | 4mm | 解答欄 | MB長辺 |
 | mbShort | 2mm | 解答欄 | MB短辺 |
-| skipMB | 2 | 詳細設定（アコーディオン）「MBインターバル」 | TM側から使用しないMB数 |
-| maxRowsL | 自動計算 | 詳細設定（アコーディオン）「MB最大」 | 使用するMBの上限番号。外枠・ピッチ・向き変更時に自動計算。手動上書き可。 |
-| columnGapMult | 1 | 詳細設定（アコーディオン）「解答欄インターバル」 | 列ギャップのMB個数（0=隣接） |
-| sectionGapMult | 1 | 詳細設定（アコーディオン）「受験番号インターバル」 | セクションギャップのMB個数（0=隣接） |
+| skipMB | 1（0.25ピッチ）/ 0（その他） | 詳細設定「MBインターバル」 | TM側から使用しないMB数。ピッチ変更時に自動設定。手動上書き可。 |
+| maxRowsL | 自動計算 | 詳細設定「MB最大」 | 使用するMBの上限番号。外枠・ピッチ・向き変更時に自動計算。手動上書き可。 |
+| columnGapMult | 1 | 詳細設定「解答欄インターバル」 | 列ギャップのMB個数（0=隣接） |
+| sectionGapMult | 1 | 詳細設定「受験番号インターバル」 | セクションギャップのMB個数（0=隣接） |
 
 **固定値（変更不可）:**
 
@@ -482,6 +501,7 @@ y9 = examTopY + 9 × pitch
 | enStart | `MARGIN + tmS×1.5 + MB_SHORT/2` | along方向の開始MB中心 |
 | PAD | 2mm | MBの端から枠線まで |
 | QLABEL_OFFSET | `pitch / 2` mm | 問題番号ラベルのMBからのx方向オフセット |
+| FS_QLABEL | 3mm | 問題番号ラベルのフォントサイズ（固定） |
 
 ---
 
@@ -492,7 +512,6 @@ y9 = examTopY + 9 × pitch
 - **PDF出力ボタン**: 常時表示。警告ボックスの下に配置。
 - **警告ボックス**: 警告あり時のみ表示。PDF出力ボタンの上。
 - **基本設定**: 向き・外枠サイズ（プリセット＋カスタム入力）・TM配置方式・裏面・表示面・ピッチ・TM間隔を含む。ピッチとTM間隔は横2列並び（`row2`）。
-- **受験番号欄・解答欄ヘッダー**: `font-size:11px; font-weight:700; text-transform:none`。
 - **詳細設定**: アコーディオンで折り畳み。MBインターバル（skipMB）・MB最大（maxRowsL）・解答欄インターバル・受験番号インターバルを含む。
 - **ピッチの仕様参照**: アコーディオンで折り畳み。ピッチ・pitch・firstX・maxMBを一覧表示。
 
@@ -504,8 +523,8 @@ y9 = examTopY + 9 × pitch
 | --surface | #161820 | #ffffff |
 | --panel | #1c1e24 | #f5f6f8 |
 | --border | #2a2d38 | #d0d4de |
-| --accent | #808080 | #808080 |
-| --accent2 | #e84393 | #d42f82 |
+| --accent | #e84393 | #d42f82 |
+| --accent2 | #00d4a0 | #009970 |
 | --text | #e8eaf0 | #1a1c24 |
 | --canvas-bg | #0a0b0d | #d8dae0 |
 
