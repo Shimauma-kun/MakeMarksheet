@@ -13,8 +13,8 @@
     --surface: #161820;
     --panel: #1c1e24;
     --border: #2a2d38;
-    --accent: #e84393;
-    --accent2: #00d4a0;
+    --accent: #808080;
+    --accent2: #e84393;
     --text: #e8eaf0;
     --text-dim: #6b7080;
     --text-mid: #9ba3b8;
@@ -30,8 +30,8 @@
     --surface: #ffffff;
     --panel: #f5f6f8;
     --border: #d0d4de;
-    --accent: #d42f82;
-    --accent2: #009970;
+    --accent: #808080;
+    --accent2: #d42f82;
     --text: #1a1c24;
     --text-dim: #7a8090;
     --text-mid: #4a5068;
@@ -343,7 +343,7 @@
   .accordion-header:hover { color: var(--text); }
   .accordion-header .acc-arrow {
     font-size: 12px;
-    color: var(--accent2);
+    color: var(--accent);
     transition: transform .2s;
   }
   .accordion-header.open .acc-arrow { transform: rotate(180deg); }
@@ -378,6 +378,25 @@
         <div class="seg" id="seg-orient">
           <button class="active" data-val="portrait">縦型 A4</button>
           <button data-val="landscape">横型 A4</button>
+        </div>
+      </div>
+      <div>
+        <div class="ctrl-label">外枠サイズ</div>
+        <select id="sel-sheetsize">
+          <option value="a4">A4 (210×297)</option>
+          <option value="jis">JIS (82.55×187.3)</option>
+          <option value="wide">幅広 (101.5×226)</option>
+          <option value="custom">カスタム</option>
+        </select>
+      </div>
+      <div class="row2" id="row-custom-size" style="display:none">
+        <div>
+          <div class="ctrl-label">幅 (mm)</div>
+          <input type="number" id="inp-sheet-w" value="210" min="1" step="0.1">
+        </div>
+        <div>
+          <div class="ctrl-label">高さ (mm)</div>
+          <input type="number" id="inp-sheet-h" value="297" min="1" step="0.1">
         </div>
       </div>
       <div>
@@ -462,17 +481,17 @@
           <input type="number" id="inp-skip" value="2" min="0" max="10">
         </div>
         <div id="row-maxrowsl">
-          <div class="ctrl-label">MB最大</div>
+          <div class="ctrl-label">MB最大 <span id="lbl-maxrowsl">30</span></div>
           <input type="number" id="inp-maxrowsl" value="30" min="1" max="100">
         </div>
         <div class="row2">
           <div>
             <div class="ctrl-label">解答欄インターバル</div>
-            <input type="number" id="inp-colgap" value="2" min="0" step="0.5">
+            <input type="number" id="inp-colgap" value="1" min="0" step="0.5">
           </div>
           <div>
             <div class="ctrl-label">受験番号インターバル</div>
-            <input type="number" id="inp-secgap" value="2" min="0" step="0.5">
+            <input type="number" id="inp-secgap" value="1" min="0" step="0.5">
           </div>
         </div>
       </div>
@@ -544,14 +563,17 @@ let state = {
   questionCount: 50,
   choiceCount: 5,
   skipMB: 2,
-  columnGapMult: 2,
-  sectionGapMult: 2,
+  columnGapMult: 1,
+  sectionGapMult: 1,
   examDigits: 5,
   mbLong: MB_LONG_DEFAULT,
   mbShort: MB_SHORT_DEFAULT,
   maxRowsL: PITCH_MASTER['0.25'].maxRowsL,
-  hasBack: false,   // 裏面の有無
-  side: 'front',    // 現在表示面 'front' / 'back'
+  hasBack: false,
+  side: 'front',
+  sheetPreset: 'a4',   // 'a4' / 'jis' / 'wide' / 'custom'
+  sheetW: 210,         // 外枠幅(mm) 縦型基準（横型は自動でswap）
+  sheetH: 297,         // 外枠高さ(mm) 縦型基準
 };
 
 // =============================================
@@ -594,6 +616,7 @@ document.querySelectorAll('#seg-orient button').forEach(btn => {
     state.orientation = btn.dataset.val;
     const lblUnit = document.getElementById('lbl-colgap-unit');
     if (lblUnit) lblUnit.textContent = state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
+    applyAutoMaxRowsL();
     render();
   });
 });
@@ -637,12 +660,8 @@ document.querySelectorAll('#seg-tmtype button').forEach(btn => {
 // Select
 document.getElementById('sel-pitch').addEventListener('change', e => {
   state.pitchName = e.target.value;
-  // maxRowsLをピッチのデフォルト値にリセット
-  const defaultRows = PITCH_MASTER[e.target.value].maxRowsL;
-  state.maxRowsL = defaultRows;
-  document.getElementById('inp-maxrowsl').value = defaultRows;
-  document.getElementById('lbl-maxrowsl').textContent = defaultRows;
   updatePitchTable();
+  applyAutoMaxRowsL();
   render();
 });
 
@@ -678,6 +697,43 @@ bindNum('inp-colgap',  'columnGapMult');
 bindNum('inp-secgap',  'sectionGapMult');
 bindNum('inp-digits',  'examDigits',     'lbl-digits');
 
+// 外枠サイズプリセット（縦型基準: w=短辺, h=長辺）
+const SHEET_PRESETS = {
+  a4:   { w: 210,   h: 297   },
+  jis:  { w: 82.55, h: 187.3 },
+  wide: { w: 101.5, h: 226   },
+};
+
+// 外枠サイズ選択
+document.getElementById('sel-sheetsize').addEventListener('change', e => {
+  state.sheetPreset = e.target.value;
+  const customRow = document.getElementById('row-custom-size');
+  if (e.target.value === 'custom') {
+    customRow.style.display = '';
+  } else {
+    customRow.style.display = 'none';
+    const preset = SHEET_PRESETS[e.target.value];
+    state.sheetW = preset.w;
+    state.sheetH = preset.h;
+    document.getElementById('inp-sheet-w').value = preset.w;
+    document.getElementById('inp-sheet-h').value = preset.h;
+  }
+  applyAutoMaxRowsL();
+  render();
+});
+
+// カスタムサイズ入力
+document.getElementById('inp-sheet-w').addEventListener('input', e => {
+  state.sheetW = parseFloat(e.target.value) || 210;
+  applyAutoMaxRowsL();
+  render();
+});
+document.getElementById('inp-sheet-h').addEventListener('input', e => {
+  state.sheetH = parseFloat(e.target.value) || 297;
+  applyAutoMaxRowsL();
+  render();
+});
+
 document.getElementById('btn-gen').addEventListener('click', render);
 
 // アコーディオン
@@ -691,7 +747,40 @@ document.querySelectorAll('.accordion-header').forEach(header => {
 });
 
 // =============================================
-// SCALE: mm -> canvas pixels
+// maxRowsL 自動計算
+// 外枠のperp方向サイズに収まるMBの最大数 - 1 を返す
+//
+// 縦型: perp方向 = x方向 = outerW = sheetW
+//   MB中心x = firstX + i*pitch (i=0が第1番、x増加方向)
+//   収まる条件: firstX + (N-1)*pitch <= outerW
+//   → maxN = floor((outerW - firstX) / pitch) + 1
+//
+// 横型: perp方向 = y方向 = outerH = sheetW（縦型基準の短辺がy方向になる）
+//   MB中心y = outerH - firstX - i*pitch (i=0が第1番、y減少=上方向)
+//   収まる条件: outerH - firstX - (N-1)*pitch >= 0
+//   → maxN = floor((outerH - firstX) / pitch) + 1
+//   ※縦型・横型とも式は同じだが、perpSizeの取り方が異なる
+// =============================================
+function calcAutoMaxRowsL() {
+  const p = PITCH_MASTER[state.pitchName];
+  const isPortrait = state.orientation === 'portrait';
+  // 縦型・横型ともに、perpの実寸はsheetW（縦型基準の短辺）
+  const perpSize = state.sheetW;
+  const maxN = Math.floor((perpSize - p.firstX) / p.pitch) + 1;
+  // maxRowsL = 収まる最大数 - 1（TM反対側1個を除外）
+  return Math.max(1, maxN - 1);
+}
+
+function applyAutoMaxRowsL() {
+  const val = calcAutoMaxRowsL();
+  state.maxRowsL = val;
+  const inp = document.getElementById('inp-maxrowsl');
+  const lbl = document.getElementById('lbl-maxrowsl');
+  if (inp) inp.value = val;
+  if (lbl) lbl.textContent = val;
+}
+
+
 // =============================================
 let MM2PX = 3.7795; // default, recalculated
 
@@ -819,9 +908,23 @@ function showComputedVals(p, outer) {
 // =============================================
 function render() {
   const p = PITCH_MASTER[state.pitchName];
-  const paper = PAPER[state.orientation];
   const isPortrait = state.orientation === 'portrait';
-  const outer = { x1:0, y1:0, x2:paper.a4w, y2:paper.a4h };
+
+  // 外枠サイズ: 縦型=sheetW×sheetH、横型=sheetH×sheetW（長辺・短辺をswap）
+  const outerW = isPortrait ? state.sheetW : state.sheetH;
+  const outerH = isPortrait ? state.sheetH : state.sheetW;
+  const outer = { x1:0, y1:0, x2:outerW, y2:outerH };
+
+  // アートボードサイズ:
+  // 外枠 < A4サイズ（縦横ともにA4未満） → アートボードをA4サイズ
+  // 外枠 ≥ A4サイズ（A4を含む、またはA4より大きい） → アートボードをB4サイズ
+  const stdPaper = PAPER[state.orientation];
+  const A4W = stdPaper.a4w, A4H = stdPaper.a4h;
+  const smallerThanA4 = outerW < A4W && outerH < A4H;
+  const boardW = smallerThanA4 ? A4W : stdPaper.b4w;
+  const boardH = smallerThanA4 ? A4H : stdPaper.b4h;
+  const ofx = (boardW - outerW) / 2;
+  const ofy = (boardH - outerH) / 2;
 
   // Warnings
   const warns = checkWarnings(p, outer);
@@ -832,10 +935,10 @@ function render() {
   // Setup canvas
   const DPR = window.devicePixelRatio || 1;
   const DISPLAY_W = 680;
-  MM2PX = DISPLAY_W / paper.b4w;
+  MM2PX = DISPLAY_W / boardW;
 
-  const canvasW = Math.round(mm(paper.b4w));
-  const canvasH = Math.round(mm(paper.b4h));
+  const canvasW = Math.round(mm(boardW));
+  const canvasH = Math.round(mm(boardH));
   canvas.width  = canvasW * DPR;
   canvas.height = canvasH * DPR;
   canvas.style.width  = canvasW + 'px';
@@ -844,17 +947,14 @@ function render() {
   wrapper.style.width  = canvasW + 'px';
   wrapper.style.height = canvasH + 'px';
 
-  const ofx = (paper.b4w - paper.a4w) / 2;
-  const ofy = (paper.b4h - paper.a4h) / 2;
-
   // Canvas background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasW, canvasH);
-  // A4外枠: マゼンタ100% 0.4pt
+  // 外枠: マゼンタ100% 0.4pt
   const LW_OUTER_PX = (0.4 / 2.835) * MM2PX;
   ctx.strokeStyle = '#ff00ff';
   ctx.lineWidth = LW_OUTER_PX;
-  ctx.strokeRect(mm(ofx), mm(ofy), mm(paper.a4w), mm(paper.a4h));
+  ctx.strokeRect(mm(ofx), mm(ofy), mm(outerW), mm(outerH));
 
   // Canvas drawing API wrapper
   const canvasAPI = {
@@ -875,6 +975,9 @@ function render() {
     },
   };
 
+  // drawLayoutに渡すpaperオブジェクトを外枠サイズで構成
+  const paper = { a4w: outerW, a4h: outerH, b4w: boardW, b4h: boardH };
+
   drawLayout(canvasAPI, p, paper, isPortrait, state.side === 'back');
 }
 
@@ -886,14 +989,24 @@ document.getElementById('btn-pdf').addEventListener('click', exportPDF);
 function exportPDF() {
   const { jsPDF } = window.jspdf;
   const p = PITCH_MASTER[state.pitchName];
-  const paper = PAPER[state.orientation];
   const isPortrait = state.orientation === 'portrait';
 
-  const orientation = isPortrait ? 'portrait' : 'landscape';
-  const doc = new jsPDF({ orientation, unit: 'mm', format: [paper.b4w, paper.b4h] });
+  const outerW = isPortrait ? state.sheetW : state.sheetH;
+  const outerH = isPortrait ? state.sheetH : state.sheetW;
+  const stdPaper = PAPER[state.orientation];
+  const A4W = stdPaper.a4w, A4H = stdPaper.a4h;
+  const smallerThanA4 = outerW < A4W && outerH < A4H;
+  const boardW = smallerThanA4 ? A4W : stdPaper.b4w;
+  const boardH = smallerThanA4 ? A4H : stdPaper.b4h;
 
-  const ofx = (paper.b4w - paper.a4w) / 2;
-  const ofy = (paper.b4h - paper.a4h) / 2;
+  const orientation = isPortrait ? 'portrait' : 'landscape';
+  const doc = new jsPDF({ orientation, unit: 'mm', format: [boardW, boardH] });
+
+  const ofx = (boardW - outerW) / 2;
+  const ofy = (boardH - outerH) / 2;
+
+  // ダミーのpaperオブジェクト（drawLayoutが参照するa4w/a4h/b4w/b4hを外枠サイズで上書き）
+  const paper = { a4w: outerW, a4h: outerH, b4w: boardW, b4h: boardH };
 
   // PDF drawing API wrapper (CMYK) — docを引数で受け取れるよう関数化
   function makePdfAPI(doc) {
@@ -931,7 +1044,7 @@ function exportPDF() {
   function drawPageFrame(doc) {
     doc.setDrawColor(0, 100, 0, 0);
     doc.setLineWidth(0.4 / 2.835);
-    doc.rect(ofx, ofy, paper.a4w, paper.a4h, 'S');
+    doc.rect(ofx, ofy, outerW, outerH, 'S');
   }
 
   // 表面
@@ -940,7 +1053,7 @@ function exportPDF() {
 
   // 裏面あり → 2ページ目
   if (state.hasBack) {
-    doc.addPage([paper.b4w, paper.b4h], orientation);
+    doc.addPage([boardW, boardH], orientation);
     drawPageFrame(doc);
     drawLayout(makePdfAPI(doc), p, paper, isPortrait, true);
   }
@@ -1361,6 +1474,7 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
 // Init
 // =============================================
 initPitchTable();
+applyAutoMaxRowsL();
 render();
 </script>
 </body>
