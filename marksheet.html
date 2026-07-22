@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マークシート生成ツール — SR-3500</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0e0f11;
+    --surface: #161820;
+    --panel: #1c1e24;
+    --border: #2a2d38;
+    --accent: #808080;
+    --accent2: #e84393;
+    --text: #e8eaf0;
+    --text-dim: #6b7080;
+    --text-mid: #9ba3b8;
+    --warn: #f59e0b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Noto Sans JP', sans-serif;
+    --canvas-bg: #0a0b0d;
+    --sheet-shadow: 0 8px 60px rgba(0,0,0,.8), 0 0 0 1px #333;
+  }
+
+  body.light-mode {
+    --bg: #f0f2f5;
+    --surface: #ffffff;
+    --panel: #f5f6f8;
+    --border: #d0d4de;
+    --accent: #808080;
+    --accent2: #d42f82;
+    --text: #1a1c24;
+    --text-dim: #7a8090;
+    --text-mid: #4a5068;
+    --warn: #b45309;
+    --canvas-bg: #d8dae0;
+    --sheet-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px #bbb;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+  }
+  header .logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  header .title {
+    font-size: 13px;
+    color: var(--text-mid);
+    font-weight: 300;
+  }
+  header .device-badge {
+    margin-left: auto;
+    background: #1a2a20;
+    border: 1px solid #2a4a38;
+    color: var(--accent2);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 3px 10px;
+    border-radius: 3px;
+  }
+
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    height: calc(100vh - 49px);
+  }
+
+  /* --- LEFT PANEL: Controls --- */
+  .controls {
+    width: 280px;
+    min-width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .section-header {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    padding: 16px 16px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+    .section-header::before {
+    background-color: var(--text-mid);
+    border-radius: 1em;
+    content: "";
+    display: inline-block;
+    height: 1.2em;
+    margin-right: .5em;
+    vertical-align: middle;
+    width: .2em;
+  }
+
+  .ctrl-group {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ctrl-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-mid);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ctrl-label span {
+    font-family: var(--mono);
+    color: var(--accent2);
+    font-size: 10px;
+  }
+
+  .seg {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .seg button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-mid);
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 7px 4px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .seg button:hover:not(.active) { background: var(--panel); color: var(--text); }
+
+  select, input[type=number], input[type=text] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    width: 100%;
+    appearance: none;
+    outline: none;
+    transition: border-color .15s;
+  }
+  select:focus, input:focus {
+    border-color: var(--accent);
+  }
+  select { cursor: pointer; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .pitch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .pitch-table th {
+    color: var(--text-dim);
+    text-align: left;
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+  .pitch-table td {
+    color: var(--text-mid);
+    padding: 3px 6px;
+  }
+  .pitch-table tr.active-row td {
+    color: var(--accent2);
+  }
+
+  .generate-btn { display: none; }
+
+  .pdf-btn {
+    margin: 8px 16px 16px;
+    background: transparent;
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+    text-transform: uppercase;
+    width: calc(100% - 32px);
+  }
+  .pdf-btn:hover { background: var(--accent2); color: #000; }
+  .pdf-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .warn-box {
+    margin: 0 16px 16px;
+    background: #2a1f0a;
+    border: 1px solid #5a3f10;
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: none;
+  }
+  .warn-box.visible { display: block; }
+  .warn-box .warn-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--warn);
+    letter-spacing: .1em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  .warn-box ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .warn-box li {
+    font-size: 11px;
+    color: #d4a040;
+  }
+  .warn-box li::before { content: '⚠ '; }
+
+  /* --- RIGHT PANEL: Canvas --- */
+  .canvas-area {
+    flex: 1;
+    overflow: auto;
+    background: var(--canvas-bg);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  #sheet-wrapper {
+    background: #fff;
+    box-shadow: var(--sheet-shadow);
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  #sheet-canvas {
+    display: block;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .info-row {
+    display: flex;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .info-chip {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    color: var(--text-mid);
+  }
+  .info-chip b { color: var(--accent2); font-weight: 500; }
+
+  .computed-vals {
+    padding: 8px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .cv-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .cv-row span:last-child { color: var(--accent2); }
+
+  /* アコーディオン */
+  .accordion-header {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: color .15s;
+  }
+  .accordion-header:hover { color: var(--text); }
+  .accordion-header .acc-arrow {
+    font-size: 12px;
+    color: var(--accent);
+    transition: transform .2s;
+  }
+  .accordion-header.open .acc-arrow { transform: rotate(180deg); }
+  .accordion-body {
+    display: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .accordion-body.open { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">MarkSheet</div>
+  <div class="title">マークシート生成ツール</div>
+  <!-- <div class="device-badge">SECONIK SR-3500</div> -->
+  <button id="btn-theme" title="ダーク/ライト切替" style="
+    margin-left:12px;background:transparent;border:1px solid var(--border);
+    color:var(--text-mid);font-size:15px;width:32px;height:28px;border-radius:4px;
+    cursor:pointer;line-height:1;transition:all .15s;
+  ">🌙</button>
+</header>
+
+<div class="layout">
+  <!-- LEFT: Controls -->
+  <div class="controls">
+
+    <div class="section-header">基本設定</div>
+    <div class="ctrl-group">
+      <div>
+        <div class="ctrl-label">向き</div>
+        <div class="seg" id="seg-orient">
+          <button class="active" data-val="portrait">縦型</button>
+          <button data-val="landscape">横型</button>
+        </div>
+      </div>
+      <div>
+        <div class="ctrl-label">外枠サイズ</div>
+        <select id="sel-sheetsize">
+          <option value="a4">A4 (210×297)</option>
+          <option value="jis">JIS (82.55×187.3)</option>
+          <option value="wide">幅広 (101.5×226)</option>
+          <option value="custom">カスタム</option>
+        </select>
+      </div>
+      <div class="row2" id="row-custom-size" style="display:none">
+        <div>
+          <div class="ctrl-label">幅 (mm)</div>
+          <input type="number" id="inp-sheet-w" value="210" min="1" step="0.1">
+        </div>
+        <div>
+          <div class="ctrl-label">高さ (mm)</div>
+          <input type="number" id="inp-sheet-h" value="297" min="1" step="0.1">
+        </div>
+      </div>
+      <div>
+        <div class="ctrl-label">TM配置方式</div>
+        <div class="seg" id="seg-tmtype">
+          <button class="active" data-val="control">制御型</button>
+          <button data-val="direct">直下型</button>
+        </div>
+      </div>
+      <div>
+        <div class="ctrl-label">裏面</div>
+        <div class="seg" id="seg-back">
+          <button class="active" data-val="false">なし</button>
+          <button data-val="true">あり</button>
+        </div>
+      </div>
+      <div id="row-side" style="display:none">
+        <div class="ctrl-label">表示面</div>
+        <div class="seg" id="seg-side">
+          <button class="active" data-val="front">表面</button>
+          <button data-val="back">裏面</button>
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <div class="ctrl-label">ピッチ</div>
+          <select id="sel-pitch">
+            <option value="0.25">0.25</option>
+            <option value="1/6">1/6</option>
+            <option value="0.2">0.2</option>
+            <option value="0.2s">0.2s</option>
+            <option value="0.3">0.3</option>
+            <option value="0.3F">0.3F</option>
+          </select>
+        </div>
+        <div>
+          <div class="ctrl-label">TM間隔 (mm)</div>
+          <input type="number" id="inp-tmi" value="4.23" min="4.23" step="0.01">
+        </div>
+      </div>
+    </div>
+    
+    <div class="section-header">受験番号欄</div>
+    <div class="ctrl-group">
+      <div>
+        <div class="ctrl-label">桁数</div>
+        <input type="number" id="inp-digits" value="5" min="1">
+      </div>
+    </div>
+
+    <div class="section-header">解答欄</div>
+    <div class="ctrl-group">
+      <div class="row2">
+        <div>
+          <div class="ctrl-label">問題数</div>
+          <input type="number" id="inp-qcount" value="50" min="1">
+        </div>
+        <div>
+          <div class="ctrl-label">選択肢数</div>
+          <input type="number" id="inp-ccount" value="5" min="1">
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <div class="ctrl-label">MB長辺 (mm)</div>
+          <input type="number" id="inp-mblong" value="4" min="0.1" step="0.1">
+        </div>
+        <div>
+          <div class="ctrl-label">MB短辺 (mm)</div>
+          <input type="number" id="inp-mbshort" value="2" min="0.1" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <div class="accordion-header" data-target="acc-advanced">
+      詳細設定 <span class="acc-arrow">▼</span>
+    </div>
+    <div class="accordion-body" id="acc-advanced">
+      <div class="ctrl-group">
+        <div id="row-skipmb">
+          <div class="ctrl-label">MBインターバル</div>
+          <input type="number" id="inp-skip" value="1" min="0">
+        </div>
+        <div id="row-maxrowsl">
+          <div class="ctrl-label">MB最大</div>
+          <input type="number" id="inp-maxrowsl" value="30" min="1">
+        </div>
+        <div class="row2">
+          <div>
+            <div class="ctrl-label">解答欄インターバル</div>
+            <input type="number" id="inp-colgap" value="1" min="0" step="0.5">
+          </div>
+          <div>
+            <div class="ctrl-label">受験番号インターバル</div>
+            <input type="number" id="inp-secgap" value="1" min="0" step="0.5">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="accordion-header" data-target="acc-pitch">
+      ピッチの仕様参照 <span class="acc-arrow">▼</span>
+    </div>
+    <div class="accordion-body" id="acc-pitch">
+      <div class="ctrl-group">
+        <table class="pitch-table" id="pitch-table">
+          <thead>
+            <tr><th>ピッチ</th><th>pitch</th><th>firstX</th><th>maxMB</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="computed-vals" id="computed-vals"></div>
+      </div>
+    </div>
+
+    <button class="generate-btn" id="btn-gen">▶ プレビュー更新</button>
+    <div class="warn-box" id="warn-box" style="margin-top:12px">
+      <div class="warn-title">警告</div>
+      <ul id="warn-list"></ul>
+    </div>
+    <button class="pdf-btn" id="btn-pdf">⬇ PDF出力</button>
+  </div>
+
+  <!-- RIGHT: Canvas -->
+  <div class="canvas-area">
+    <div id="sheet-wrapper">
+      <canvas id="sheet-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================
+// PITCH MASTER
+// =============================================
+const PITCH_MASTER = {
+  '0.25': { pitch:6.35,   firstX:6.35,  maxMB:33, tmS:0.89, tmL:5.9,  tmPos:-2.0,  maxRowsL:30 },
+  '1/6':  { pitch:4.233,  firstX:11.43, maxMB:48, tmS:1.27, tmL:3.81, tmPos:5.085, maxRowsL:43 },
+  '0.2':  { pitch:5.08,   firstX:11.75, maxMB:40, tmS:0.89, tmL:5.9,  tmPos:-2.0,  maxRowsL:36 },
+  '0.2s': { pitch:5.08,   firstX:12.7,  maxMB:40, tmS:0.89, tmL:3.81, tmPos:5.095, maxRowsL:36 },
+  '0.3':  { pitch:7.62,   firstX:14.50, maxMB:27, tmS:0.89, tmL:7.0,  tmPos:-2.0,  maxRowsL:24 },
+  '0.3F': { pitch:7.62,   firstX:17.78, maxMB:24, tmS:0.5,  tmL:5.08, tmPos:7.62,  maxRowsL:24 },
+};
+
+// Paper sizes (mm)
+const PAPER = {
+  portrait:  { a4w:210, a4h:297, b4w:257, b4h:364 },
+  landscape: { a4w:297, a4h:210, b4w:364, b4h:257 },
+};
+
+// MB size (mm) — デフォルト値（stateで管理）
+const MB_LONG_DEFAULT = 4, MB_SHORT_DEFAULT = 2;
+const PAD = 2; // frame padding mm
+const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない（SR-3500仕様）
+
+// =============================================
+// State
+// =============================================
+let state = {
+  orientation: 'portrait',
+  tmType: 'control',
+  pitchName: '0.25',
+  tmInterval: 4.23,
+  questionCount: 50,
+  choiceCount: 5,
+  skipMB: 1,
+  columnGapMult: 1,
+  sectionGapMult: 1,
+  examDigits: 5,
+  mbLong: MB_LONG_DEFAULT,
+  mbShort: MB_SHORT_DEFAULT,
+  maxRowsL: PITCH_MASTER['0.25'].maxRowsL,
+  hasBack: false,
+  side: 'front',
+  sheetPreset: 'a4',   // 'a4' / 'jis' / 'wide' / 'custom'
+  sheetW: 210,         // 外枠幅(mm) 縦型基準（横型は自動でswap）
+  sheetH: 297,         // 外枠高さ(mm) 縦型基準
+};
+
+// =============================================
+// DOM refs
+// =============================================
+const canvas = document.getElementById('sheet-canvas');
+const ctx = canvas.getContext('2d');
+const wrapper = document.getElementById('sheet-wrapper');
+const warnBox = document.getElementById('warn-box');
+const warnList = document.getElementById('warn-list');
+const computedVals = document.getElementById('computed-vals');
+const rowSkipMb = document.getElementById('row-skipmb');
+
+// =============================================
+// UI Bindings
+// =============================================
+function initPitchTable() {
+  const tbody = document.querySelector('#pitch-table tbody');
+  tbody.innerHTML = '';
+  Object.entries(PITCH_MASTER).forEach(([name, p]) => {
+    const tr = document.createElement('tr');
+    tr.dataset.pitch = name;
+    tr.innerHTML = `<td>${name}</td><td>${p.pitch}</td><td>${p.firstX}</td><td>${p.maxMB}</td>`;
+    tbody.appendChild(tr);
+  });
+  updatePitchTable();
+}
+
+function updatePitchTable() {
+  document.querySelectorAll('#pitch-table tbody tr').forEach(tr => {
+    tr.classList.toggle('active-row', tr.dataset.pitch === state.pitchName);
+  });
+}
+
+// Segmented buttons
+document.querySelectorAll('#seg-orient button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-orient button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.orientation = btn.dataset.val;
+    const lblUnit = document.getElementById('lbl-colgap-unit');
+    if (lblUnit) lblUnit.textContent = state.orientation === 'portrait' ? '(pitch×)' : '(tmInterval×)';
+    applyAutoMaxRowsL();
+    render();
+  });
+});
+
+// 裏面有無
+document.querySelectorAll('#seg-back button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-back button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.hasBack = btn.dataset.val === 'true';
+    document.getElementById('row-side').style.display = state.hasBack ? '' : 'none';
+    if (!state.hasBack) {
+      state.side = 'front';
+      document.querySelectorAll('#seg-side button').forEach(b=>b.classList.remove('active'));
+      document.querySelector('#seg-side button[data-val="front"]').classList.add('active');
+    }
+    render();
+  });
+});
+
+// 表裏切替
+document.querySelectorAll('#seg-side button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-side button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.side = btn.dataset.val;
+    render();
+  });
+});
+
+// TM配置方式
+document.querySelectorAll('#seg-tmtype button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-tmtype button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tmType = btn.dataset.val;
+    render();
+  });
+});
+
+// Select
+document.getElementById('sel-pitch').addEventListener('change', e => {
+  state.pitchName = e.target.value;
+  updatePitchTable();
+  applyAutoSkipMB();
+  applyAutoMaxRowsL();
+  render();
+});
+
+// ① ダーク/ライトモード切替
+(function() {
+  const btn = document.getElementById('btn-theme');
+  let isLight = false;
+  btn.addEventListener('click', () => {
+    isLight = !isLight;
+    document.body.classList.toggle('light-mode', isLight);
+    btn.textContent = isLight ? '☀️' : '🌙';
+  });
+})();
+
+// Numbers
+function bindNum(id, key, label) {
+  const el = document.getElementById(id);
+  const lbl = label ? document.getElementById(label) : null;
+  el.addEventListener('input', () => {
+    state[key] = parseFloat(el.value) || 0;
+    if (lbl) lbl.textContent = el.value;
+    render();
+  });
+}
+bindNum('inp-tmi',     'tmInterval',     'lbl-tmi');
+bindNum('inp-qcount',  'questionCount');
+bindNum('inp-ccount',  'choiceCount');
+bindNum('inp-mblong',  'mbLong');
+bindNum('inp-mbshort', 'mbShort');
+bindNum('inp-maxrowsl','maxRowsL',       'lbl-maxrowsl');
+bindNum('inp-skip',    'skipMB',         'lbl-skip');
+bindNum('inp-colgap',  'columnGapMult');
+bindNum('inp-secgap',  'sectionGapMult');
+bindNum('inp-digits',  'examDigits',     'lbl-digits');
+
+// 外枠サイズプリセット（縦型基準: w=短辺, h=長辺）
+const SHEET_PRESETS = {
+  a4:   { w: 210,   h: 297   },
+  jis:  { w: 82.55, h: 187.3 },
+  wide: { w: 101.5, h: 226   },
+};
+
+// 外枠サイズ選択
+document.getElementById('sel-sheetsize').addEventListener('change', e => {
+  state.sheetPreset = e.target.value;
+  const customRow = document.getElementById('row-custom-size');
+  if (e.target.value === 'custom') {
+    customRow.style.display = '';
+  } else {
+    customRow.style.display = 'none';
+    const preset = SHEET_PRESETS[e.target.value];
+    state.sheetW = preset.w;
+    state.sheetH = preset.h;
+    document.getElementById('inp-sheet-w').value = preset.w;
+    document.getElementById('inp-sheet-h').value = preset.h;
+  }
+  applyAutoMaxRowsL();
+  render();
+});
+
+// カスタムサイズ入力
+document.getElementById('inp-sheet-w').addEventListener('input', e => {
+  state.sheetW = parseFloat(e.target.value) || 210;
+  applyAutoMaxRowsL();
+  render();
+});
+document.getElementById('inp-sheet-h').addEventListener('input', e => {
+  state.sheetH = parseFloat(e.target.value) || 297;
+  applyAutoMaxRowsL();
+  render();
+});
+
+document.getElementById('btn-gen').addEventListener('click', render);
+
+// アコーディオン
+document.querySelectorAll('.accordion-header').forEach(header => {
+  header.addEventListener('click', () => {
+    const target = document.getElementById(header.dataset.target);
+    const isOpen = target.classList.contains('open');
+    target.classList.toggle('open', !isOpen);
+    header.classList.toggle('open', !isOpen);
+  });
+});
+
+// =============================================
+// maxRowsL 自動計算
+// 外枠のperp方向サイズに収まるMBの最大数 - 1 を返す
+//
+// 縦型: perp方向 = x方向 = outerW = sheetW
+//   MB中心x = firstX + i*pitch (i=0が第1番、x増加方向)
+//   収まる条件: firstX + (N-1)*pitch <= outerW
+//   → maxN = floor((outerW - firstX) / pitch) + 1
+//
+// 横型: perp方向 = y方向 = outerH = sheetW（縦型基準の短辺がy方向になる）
+//   MB中心y = outerH - firstX - i*pitch (i=0が第1番、y減少=上方向)
+//   収まる条件: outerH - firstX - (N-1)*pitch >= 0
+//   → maxN = floor((outerH - firstX) / pitch) + 1
+//   ※縦型・横型とも式は同じだが、perpSizeの取り方が異なる
+// =============================================
+function calcAutoMaxRowsL() {
+  const p = PITCH_MASTER[state.pitchName];
+  const isPortrait = state.orientation === 'portrait';
+  // 縦型・横型ともに、perpの実寸はsheetW（縦型基準の短辺）
+  const perpSize = state.sheetW;
+  const maxN = Math.floor((perpSize - p.firstX) / p.pitch) + 1;
+  // maxRowsL = 収まる最大数 - 1（TM反対側1個を除外）
+  return Math.max(1, maxN - 1);
+}
+
+function applyAutoMaxRowsL() {
+  const val = calcAutoMaxRowsL();
+  state.maxRowsL = val;
+  const inp = document.getElementById('inp-maxrowsl');
+  const lbl = document.getElementById('lbl-maxrowsl');
+  if (inp) inp.value = val;
+  if (lbl) lbl.textContent = val;
+}
+
+// MBインターバル（skipMB）自動設定
+// 0.25ピッチ → 1、それ以外 → 0
+function applyAutoSkipMB() {
+  const val = state.pitchName === '0.25' ? 1 : 0;
+  state.skipMB = val;
+  const inp = document.getElementById('inp-skip');
+  const lbl = document.getElementById('lbl-skip');
+  if (inp) inp.value = val;
+  if (lbl) lbl.textContent = val;
+}
+
+
+// =============================================
+let MM2PX = 3.7795; // default, recalculated
+
+function mm(v) { return v * MM2PX; }
+
+// =============================================
+// WARNINGS
+// =============================================
+function checkWarnings(p, outer) {
+  const warns = [];
+  if (state.tmType === 'control' &&state.tmInterval < 4.23) warns.push('TM間隔が最小値(4.23mm)未満です');
+  if (state.tmType !== 'control' &&state.tmInterval < 2.21) warns.push('TM間隔が最小値(2.21mm)未満です');
+
+  if (state.orientation === 'landscape') {
+    // 横型: 数字9のy check
+    const examTopY = outer.y2 - p.firstX - 29 * p.pitch;
+    const y9 = examTopY + 9 * p.pitch;
+    if (y9 > outer.y2) warns.push('受験番号欄の数字9行が外枠外にはみ出します');
+  }
+
+  // はみ出しチェック: 表面＋裏面で全問収まるか
+  const PT2MM = 1 / 2.835;
+  const MB_SHORT = state.mbShort;
+  const MB_LONG  = state.mbLong;
+  const MARGIN   = 9;
+  const tmS      = p.tmS;
+  const pitch    = p.pitch;
+  const firstX   = p.firstX;
+  const skipMB   = state.skipMB;
+  const maxRowsL = state.maxRowsL;
+  const tmInterval = state.tmInterval;
+  const sectionGap = tmInterval * (state.sectionGapMult + 1);
+  const columnGap  = state.orientation === 'portrait'
+    ? pitch      * (state.columnGapMult + 1)
+    : tmInterval * (state.columnGapMult + 1);
+  const enStart  = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+  const choiceCount = state.choiceCount;
+
+  let totalCapacity = 0;
+
+  if (state.orientation === 'portrait') {
+    // 表面
+    const colWidth  = (choiceCount - 1) * pitch;
+    const enEndY    = enStart + 9 * tmInterval;
+    const ansStartY = enEndY + sectionGap;
+    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    // 描画側と同じ: perpMax（maxRowsL基準）で列数を制限
+    const baseX    = outer.x1 + firstX + skipMB * pitch;
+    const perpMax  = outer.x1 + firstX + (maxRowsL - 1) * pitch;
+    let frontCols = 0;
+    while (baseX + frontCols * (colWidth + columnGap) + colWidth <= perpMax) frontCols++;
+    if (frontCols === 0) frontCols = 1;
+    totalCapacity += qPerCol * frontCols;
+
+    // 裏面（hasBackのとき）
+    if (state.hasBack) {
+      const backChoice1x   = outer.x2 - firstX - (maxRowsL - 1) * pitch;
+      const backRightLimit = outer.x2 - firstX - skipMB * pitch;
+      const maxYmmB        = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      const qPerColB       = Math.max(0, Math.floor((maxYmmB - enStart) / tmInterval) + 1);
+      let backCols = 0;
+      while (true) {
+        const colBaseX = backChoice1x + backCols * (colWidth + columnGap);
+        if (colBaseX + colWidth + MB_LONG / 2 + PAD > backRightLimit) break;
+        if (colBaseX - MB_LONG / 2 < outer.x1) break;
+        backCols++;
+      }
+      totalCapacity += qPerColB * backCols;
+    }
+  } else {
+    // 横型表面
+    const colWidth   = (choiceCount - 1) * tmInterval;
+    const enEndX     = enStart + (state.examDigits - 1) * tmInterval;
+    const ansStart   = enEndX + sectionGap;
+    const maxXmm     = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const qPerCol    = maxRowsL - skipMB;
+    let frontCols = 0;
+    while (ansStart + frontCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmm) frontCols++;
+    totalCapacity += qPerCol * frontCols;
+
+    // 横型裏面
+    if (state.hasBack) {
+      const ansStartB  = enStart;
+      const maxXmmB    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      let backCols = 0;
+      while (ansStartB + backCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmmB) backCols++;
+      totalCapacity += qPerCol * backCols;
+    }
+  }
+
+  if (totalCapacity < state.questionCount) {
+    warns.push('マークがはみ出ています');
+  }
+
+  return warns;
+}
+
+// =============================================
+// COMPUTED VALUES DISPLAY
+// =============================================
+function showComputedVals(p, outer) {
+  const lines = [];
+  if (state.orientation === 'portrait') {
+    const enStart = p.firstX + state.tmInterval * 3;
+    const examEndY = enStart + 9 * state.tmInterval;
+    const sectionGap = p.pitch * state.sectionGapMult;
+    const ansStartY = examEndY + sectionGap;
+    lines.push(['enStart (along)', enStart.toFixed(2) + 'mm']);
+    lines.push(['ansStartY', ansStartY.toFixed(2) + 'mm']);
+    lines.push(['columnGap', (p.pitch * state.columnGapMult).toFixed(2) + 'mm']);
+  } else {
+    const ansStartY = outer.y2 - p.firstX - 29 * p.pitch;
+    const enStart = p.firstX + state.tmInterval * 3;
+    lines.push(['ansStartY (固定)', ansStartY.toFixed(2) + 'mm']);
+    lines.push(['enStart (along)', enStart.toFixed(2) + 'mm']);
+  }
+  lines.push(['pitch', p.pitch + 'mm']);
+  lines.push(['tmInterval', state.tmInterval.toFixed(2) + 'mm']);
+  computedVals.innerHTML = lines.map(([k,v]) =>
+    `<div class="cv-row"><span>${k}</span><span>${v}</span></div>`
+  ).join('');
+}
+
+// =============================================
+// MAIN RENDER
+// =============================================
+function render() {
+  const p = PITCH_MASTER[state.pitchName];
+  const isPortrait = state.orientation === 'portrait';
+
+  // 外枠サイズ: 縦型=sheetW×sheetH、横型=sheetH×sheetW（長辺・短辺をswap）
+  const outerW = isPortrait ? state.sheetW : state.sheetH;
+  const outerH = isPortrait ? state.sheetH : state.sheetW;
+  const outer = { x1:0, y1:0, x2:outerW, y2:outerH };
+
+  // アートボードサイズ:
+  // 外枠 < A4サイズ（縦横ともにA4未満） → アートボードをA4サイズ
+  // 外枠 ≥ A4サイズ（A4を含む、またはA4より大きい） → アートボードをB4サイズ
+  const stdPaper = PAPER[state.orientation];
+  const A4W = stdPaper.a4w, A4H = stdPaper.a4h;
+  const smallerThanA4 = outerW < A4W && outerH < A4H;
+  const boardW = smallerThanA4 ? A4W : stdPaper.b4w;
+  const boardH = smallerThanA4 ? A4H : stdPaper.b4h;
+  const ofx = (boardW - outerW) / 2;
+  const ofy = (boardH - outerH) / 2;
+
+  // Warnings
+  const warns = checkWarnings(p, outer);
+  warnList.innerHTML = warns.map(w=>`<li>${w}</li>`).join('');
+  warnBox.classList.toggle('visible', warns.length > 0);
+  showComputedVals(p, outer);
+
+  // Setup canvas
+  const DPR = window.devicePixelRatio || 1;
+  const DISPLAY_W = 680;
+  MM2PX = DISPLAY_W / boardW;
+
+  const canvasW = Math.round(mm(boardW));
+  const canvasH = Math.round(mm(boardH));
+  canvas.width  = canvasW * DPR;
+  canvas.height = canvasH * DPR;
+  canvas.style.width  = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  ctx.scale(DPR, DPR);
+  wrapper.style.width  = canvasW + 'px';
+  wrapper.style.height = canvasH + 'px';
+
+  // Canvas background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+  // 外枠: マゼンタ100% 0.4pt
+  const LW_OUTER_PX = (0.4 / 2.835) * MM2PX;
+  ctx.strokeStyle = '#ff00ff';
+  ctx.lineWidth = LW_OUTER_PX;
+  ctx.strokeRect(mm(ofx), mm(ofy), mm(outerW), mm(outerH));
+
+  // Canvas drawing API wrapper
+  const canvasAPI = {
+    setFill:   (r,g,b)   => { ctx.fillStyle   = `rgb(${r},${g},${b})`; },
+    setStroke: (r,g,b,w) => { ctx.strokeStyle = `rgb(${r},${g},${b})`; ctx.lineWidth = w * MM2PX; },
+    rect:  (x,y,w,h)     => { ctx.fillRect(mm(ofx+x), mm(ofy+y), mm(w), mm(h)); },
+    strokeRect: (x,y,w,h)=> { ctx.strokeRect(mm(ofx+x), mm(ofy+y), mm(w), mm(h)); },
+    ellipse: (cx,cy,rx,ry,fill) => {
+      ctx.beginPath();
+      ctx.ellipse(mm(ofx+cx), mm(ofy+cy), mm(rx), mm(ry), 0, 0, Math.PI*2);
+      if (fill) { ctx.fill(); } else { ctx.stroke(); }
+    },
+    text: (x,y,str,sizeMm,align,font) => {
+      ctx.font = `${mm(sizeMm)}px ${font}`;
+      ctx.textAlign  = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(str, mm(ofx+x), mm(ofy+y));
+    },
+  };
+
+  // drawLayoutに渡すpaperオブジェクトを外枠サイズで構成
+  const paper = { a4w: outerW, a4h: outerH, b4w: boardW, b4h: boardH };
+
+  drawLayout(canvasAPI, p, paper, isPortrait, state.side === 'back');
+}
+
+// =============================================
+// PDF EXPORT
+// =============================================
+document.getElementById('btn-pdf').addEventListener('click', exportPDF);
+
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const p = PITCH_MASTER[state.pitchName];
+  const isPortrait = state.orientation === 'portrait';
+
+  const outerW = isPortrait ? state.sheetW : state.sheetH;
+  const outerH = isPortrait ? state.sheetH : state.sheetW;
+  const stdPaper = PAPER[state.orientation];
+  const A4W = stdPaper.a4w, A4H = stdPaper.a4h;
+  const smallerThanA4 = outerW < A4W && outerH < A4H;
+  const boardW = smallerThanA4 ? A4W : stdPaper.b4w;
+  const boardH = smallerThanA4 ? A4H : stdPaper.b4h;
+
+  const orientation = isPortrait ? 'portrait' : 'landscape';
+  const doc = new jsPDF({ orientation, unit: 'mm', format: [boardW, boardH] });
+
+  const ofx = (boardW - outerW) / 2;
+  const ofy = (boardH - outerH) / 2;
+
+  // ダミーのpaperオブジェクト（drawLayoutが参照するa4w/a4h/b4w/b4hを外枠サイズで上書き）
+  const paper = { a4w: outerW, a4h: outerH, b4w: boardW, b4h: boardH };
+
+  // PDF drawing API wrapper (CMYK) — docを引数で受け取れるよう関数化
+  function makePdfAPI(doc) {
+    return {
+      setFill: (r,g,b) => {
+        if (r===0 && g===0 && b===0) {
+          doc.setFillColor(0, 0, 0, 100);
+          doc.setTextColor(0, 0, 0, 100);
+        } else if (r===255 && g===0 && b===255) {
+          doc.setFillColor(0, 100, 0, 0);
+          doc.setTextColor(0, 100, 0, 0);
+        } else {
+          doc.setFillColor(r, g, b);
+          doc.setTextColor(r, g, b);
+        }
+      },
+      setStroke: (r,g,b,w) => {
+        if (r===0 && g===0 && b===0)          doc.setDrawColor(0, 0, 0, 100);
+        else if (r===255 && g===0 && b===255) doc.setDrawColor(0, 100, 0, 0);
+        else doc.setDrawColor(r, g, b);
+        doc.setLineWidth(w);
+      },
+      rect:  (x,y,w,h)     => { doc.rect(ofx+x, ofy+y, w, h, 'F'); },
+      strokeRect: (x,y,w,h)=> { doc.rect(ofx+x, ofy+y, w, h, 'S'); },
+      ellipse: (cx,cy,rx,ry,fill) => {
+        doc.ellipse(ofx+cx, ofy+cy, rx, ry, fill ? 'F' : 'S');
+      },
+      text: (x,y,str,sizeMm,align,_font) => {
+        doc.setFontSize(sizeMm * 2.835);
+        doc.text(String(str), ofx+x, ofy+y, { align, baseline: 'middle' });
+      },
+    };
+  }
+
+  function drawPageFrame(doc) {
+    doc.setDrawColor(0, 100, 0, 0);
+    doc.setLineWidth(0.4 / 2.835);
+    doc.rect(ofx, ofy, outerW, outerH, 'S');
+  }
+
+  // 表面
+  drawPageFrame(doc);
+  drawLayout(makePdfAPI(doc), p, paper, isPortrait, false);
+
+  // 裏面あり → 2ページ目
+  if (state.hasBack) {
+    doc.addPage([boardW, boardH], orientation);
+    drawPageFrame(doc);
+    drawLayout(makePdfAPI(doc), p, paper, isPortrait, true);
+  }
+
+  const orient = isPortrait ? 'portrait' : 'landscape';
+  doc.save(`marksheet_${orient}_${state.pitchName}.pdf`);
+}
+
+// =============================================
+// SHARED DRAW LOGIC
+// =============================================
+function drawLayout(api, p, paper, isPortrait, isBack=false) {
+  const outer = { x1:0, y1:0, x2:paper.a4w, y2:paper.a4h };
+  const tmInterval = state.tmInterval;
+  const pitch = p.pitch;
+  const firstX = p.firstX;
+  const tmS = p.tmS;
+  const tmL = p.tmL;
+  const tmPos = p.tmPos;
+  const skipMB = state.skipMB;
+  const MB_LONG  = state.mbLong;
+  const MB_SHORT = state.mbShort;
+  const maxRowsL = state.maxRowsL;
+
+  const MARGIN = 9;
+  const enStart = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+  // gapMult=0: インターバルなし（隣接、中心間距離=pitch/tmInterval×1）
+  // gapMult=N: MB N個分の空き（中心間距離=pitch/tmInterval×(N+1)）
+  const sectionGap = tmInterval * (state.sectionGapMult + 1);
+  const columnGap = isPortrait
+    ? pitch    * (state.columnGapMult + 1)
+    : tmInterval * (state.columnGapMult + 1);
+
+  const PT2MM = 1 / 2.835;
+  const LW_OUTER = 0.4 * PT2MM;
+  const LW_MB    = 0.6 * PT2MM;
+  const FS_MB_PDF = 7 * PT2MM;
+  // 問題番号ラベルのMBからのオフセット 2pt→mm
+  const QLABEL_OFFSET = pitch / 2; // MBからピッチの1/2mm離す
+  const FS_QLABEL = 3; // 問題番号ラベルフォントサイズ固定 3mm (=MB_SHORT_DEFAULT×1.5)
+
+  // =============================================
+  // 表面の1列あたり描画可能問題数を計算
+  // =============================================
+  function calcFrontQPerCol() {
+    if (isPortrait) {
+      const enEndY    = enStart + 9 * tmInterval;
+      const ansStartY = enEndY + sectionGap;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      return Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    } else {
+      return maxRowsL - skipMB;
+    }
+  }
+
+  // 表面で描画できる総問題数（列数 × qPerCol、ただし全問題数上限）
+  function calcFrontTotalQ() {
+    const qpc = calcFrontQPerCol();
+    if (isPortrait) {
+      // 縦型: 列数は横幅で決まるが、単純に全問が1列目に収まるかだけ判定
+      return qpc; // 1列分で判定（複数列は後続処理で判定）
+    } else {
+      // 横型: 1列のqPerCol × 列数
+      const enEndX  = enStart + (state.examDigits - 1) * tmInterval;
+      const ansStart2 = enEndX + sectionGap;
+      const colWidth2 = (state.choiceCount - 1) * tmInterval;
+      const maxXmm2   = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      let cols = 0;
+      while (ansStart2 + cols * (colWidth2 + columnGap) <= maxXmm2) cols++;
+      return qpc * cols;
+    }
+  }
+
+  // =============================================
+  // 裏面: 表面の描画問題数を実際に数える（縦型用）
+  // =============================================
+  function calcFrontQPortrait() {
+    // along方向（問題数）は座標ベースで制限
+    const enEndY    = enStart + 9 * tmInterval;
+    const ansStartY = enEndY + sectionGap;
+    const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    const qPerCol   = Math.max(0, Math.floor((maxYmm - ansStartY) / tmInterval) + 1);
+    // perp方向（列数）はmaxRowsLで制限: 列右端MB中心がmaxRowsL範囲内かチェック
+    const colWidth2 = (state.choiceCount - 1) * pitch;
+    const baseX2    = outer.x1 + firstX + skipMB * pitch;
+    const perpMax2  = outer.x1 + firstX + (maxRowsL - 1) * pitch;
+    let cols = 0;
+    while (baseX2 + cols * (colWidth2 + columnGap) + colWidth2 <= perpMax2) cols++;
+    if (cols === 0) cols = 1;
+    return Math.min(qPerCol * cols, state.questionCount);
+  }
+
+  function calcFrontQLandscape() {
+    const qpc = maxRowsL - skipMB;
+    const enEndX  = enStart + (state.examDigits - 1) * tmInterval;
+    const ansStart2 = enEndX + sectionGap;
+    const colWidth2 = (state.choiceCount - 1) * tmInterval;
+    const maxXmm2   = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+    let cols = 0;
+    while (ansStart2 + cols * (colWidth2 + columnGap) <= maxXmm2) cols++;
+    return Math.min(qpc * Math.max(cols, 1), state.questionCount);
+  }
+
+  // =============================================
+  // TM描画（縦型・横型・表裏で配置が異なる）
+  // =============================================
+  const tmAlongPositions = new Set();
+  function collectTM(alongCenter) {
+    tmAlongPositions.add(parseFloat(alongCenter.toFixed(3)));
+  }
+
+  function drawAllTMs() {
+    api.setFill(0, 0, 0);
+    const sorted = [...tmAlongPositions].sort((a,b)=>a-b);
+    sorted.forEach(ac => {
+      if (isPortrait) {
+        // 縦型: along=下↓
+        // TM配置辺: 表面=人間視点で左辺(outer.x1)、裏面=人間視点で右辺(outer.x2)
+        // 制御型: TM上端 = MB中心 - tmS×1.5
+        // 直下型: TM上端 = MB中心 - tmS/2
+        const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+        const tx = isBack
+          ? outer.x2 - tmPos - tmL   // 裏面: 人間視点で右辺基準
+          : outer.x1 + tmPos;         // 表面: 人間視点で左辺基準
+        api.rect(tx, ac - tmOffset, tmL, tmS);
+      } else {
+        // 横型: along=右→
+        // TM along方向x（制御型/直下型）: 表面・裏面共通
+        const txOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+        const tx =  !isBack ? ac - txOffset: ac + txOffset - tmS ;
+        // TM perp方向y: 表面・裏面共通
+        // 下辺基準 outer.y2 - tmPos - tmL
+        const ty = outer.y2 - tmPos - tmL;
+        api.rect(tx, ty, tmS, tmL);
+      }
+    });
+  }
+
+  // MB描画
+  function drawMB(cx, cy, portrait) {
+    const rx = portrait ? MB_LONG/2 : MB_SHORT/2;
+    const ry = portrait ? MB_SHORT/2 : MB_LONG/2;
+    api.setStroke(255, 0, 255, LW_MB);
+    api.ellipse(cx, cy, rx, ry, false);
+  }
+
+  function drawMBText(cx, cy, text) {
+    api.setFill(255, 0, 255);
+    api.text(cx, cy, text, FS_MB_PDF, 'center', "'MS Gothic', 'MS ゴシック', monospace");
+  }
+
+  // 問題番号ラベル
+  // 縦型裏面: 選択肢①MBの右にラベル（MB_LONG/2 + offset）
+  // 縦型表面・横型: 選択肢①MBの左にラベル
+  // 横型はMBが縦長（perp=長辺）なのでx方向オフセットはMB_SHORT/2を使う
+  function drawQLabel(cx, cy, text) {
+    api.setFill(255, 0, 255);
+    if (isPortrait && isBack) {
+      api.text(cx + MB_LONG/2 + QLABEL_OFFSET, cy, text, FS_QLABEL, 'left', "'Noto Sans JP', sans-serif");
+    } else if (isPortrait) {
+      api.text(cx - MB_LONG/2 - QLABEL_OFFSET, cy, text, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
+    } else {
+      // 横型: MBはalong方向が短辺(MB_SHORT)、perp方向が長辺(MB_LONG)
+      // ラベルはalong方向（x）の左隣 → x方向オフセットはMB_SHORT/2
+      api.text(cx - MB_SHORT/2 - QLABEL_OFFSET, cy, text, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
+    }
+  }
+
+  function drawFrame(x1, y1, x2, y2) {
+    api.setStroke(255, 0, 255, LW_OUTER);
+    const fx1 = Math.min(x1, x2), fx2 = Math.max(x1, x2);
+    const fy1 = Math.min(y1, y2), fy2 = Math.max(y1, y2);
+    api.strokeRect(fx1 - PAD, fy1 - PAD, (fx2 - fx1) + PAD*2, (fy2 - fy1) + PAD*2);
+  }
+
+  // =============================================
+  // PORTRAIT Layout（縦型）
+  // =============================================
+  if (isPortrait) {
+
+    if (!isBack) {
+      // =============================================
+      // 縦型 表面
+      // =============================================
+      const perpBase = outer.x1 + firstX + skipMB * pitch;
+
+      // 受験番号欄
+      const examDigits = state.examDigits;
+      const enStartY = enStart;
+      const enEndY   = enStart + 9 * tmInterval;
+      for (let ri = 0; ri <= 9; ri++) collectTM(enStart + ri * tmInterval);
+      drawFrame(perpBase - MB_LONG/2, enStartY - MB_SHORT/2,
+                perpBase + (examDigits - 1) * pitch + MB_LONG/2, enEndY + MB_SHORT/2);
+      for (let di = 0; di < examDigits; di++) {
+        const cx = perpBase + di * pitch;
+        for (let ri = 0; ri <= 9; ri++) {
+          const cy = enStart + ri * tmInterval;
+          drawMB(cx, cy, true);
+          drawMBText(cx, cy, ri.toString());
+        }
+      }
+
+      // 解答欄
+      const ansStartY = enEndY + sectionGap;
+      const colWidth  = (state.choiceCount - 1) * pitch;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      // along方向（問題数）は座標ベースで制限
+      const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, state.questionCount);
+      // perp方向（列）はmaxRowsLで制限:
+      // perpBase = firstX + skipMB×pitch からの使用済みMB数 + 列内MB数 ≤ maxRowsL
+      // → 列右端のperp座標(MB中心) = perpBase + colIndex×(colWidth+columnGap) + colWidth
+      //   = outer.x1 + firstX + (skipMB + colIndex×choiceCount + (colIndex-1)×gap_in_mb + choiceCount-1) × pitch ...
+      // シンプルに: outer.x1 + firstX + (使用MB番号) × pitch ≤ outer.x1 + firstX + maxRowsL × pitch
+      // 各列の右端MB番号(1-indexed) = skipMB + colIndex×choiceCount + (choiceCount-1) + 1
+      //   = skipMB + (colIndex+1)×choiceCount
+      // ただしcolumnGapは選択肢数ではなくmm単位なので、右端x座標で判定する方が確実
+      const perpMax   = outer.x1 + firstX + (maxRowsL - 1) * pitch; // 最大MB中心x
+
+      let qi = 0, colIndex = 0;
+      const colPositions = [];
+      while (qi < state.questionCount) {
+        const colBaseX = perpBase + colIndex * (colWidth + columnGap);
+        // 列の右端MB中心がmaxRowsL範囲内かチェック（MB最大数ベース）
+        if (colBaseX + colWidth > perpMax) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        for (let r = 0; r < qPerCol && qi < state.questionCount; r++, qi++) {
+          const cy = ansStartY + r * tmInterval;
+          collectTM(cy);
+          frameMinY = Math.min(frameMinY, cy);
+          frameMaxY = Math.max(frameMaxY, cy);
+          drawQLabel(colBaseX, cy, `${qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * pitch;
+            drawMB(cx, cy, true);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        colPositions.push({
+          x1: colBaseX - MB_LONG/2, y1: frameMinY - MB_SHORT/2,
+          x2: colBaseX + (state.choiceCount-1)*pitch + MB_LONG/2, y2: frameMaxY + MB_SHORT/2,
+        });
+        colIndex++;
+      }
+      colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
+      drawAllTMs();
+
+    } else {
+      // =============================================
+      // 縦型 裏面
+      // 人間視点: TMは右側、MBは右側（TM側）から第1MB・第2MB…と並ぶ
+      // 問題番号・選択肢の見た目は表面と同じ（上→下、左→右）
+      // 物理MB座標はWeb座標系でouter.x2（人間視点で右）基準
+      // =============================================
+      const frontQ = calcFrontQPortrait();
+      const remainQ = state.questionCount - frontQ;
+
+      // 表面だけで全問収まる場合は外枠のみ
+      if (remainQ <= 0) {
+        api.setStroke(255, 0, 255, LW_OUTER);
+        api.strokeRect(outer.x1, outer.y1, outer.x2 - outer.x1, outer.y2 - outer.y1);
+        return;
+      }
+
+      // 受験番号欄なし。enStartから直接解答欄
+      const ansStartY = enStart;
+      const colWidth  = (state.choiceCount - 1) * pitch;
+      const maxYmm    = outer.y2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      // along方向（問題数）は座標ベースで制限
+      const qPerCol   = Math.min(Math.floor((maxYmm - ansStartY) / tmInterval) + 1, remainQ);
+
+      // 裏面perp基準（人間視点での左右）:
+      //   人間視点で左側がTM反対側（x小）、右側がTM側（x大）
+      //   TM反対側（左）: (maxMB - maxRowsL) 個が使用不可
+      //   TM側（右）: skipMB 個が使用不可
+      //   使用範囲: 物理第(skipMB+1)番〜第(maxRowsL)番  計(maxRowsL - skipMB)個
+      //
+      //   選択肢①のx（人間視点で左端・maxRowsL番MB）
+      //     = outer.x2 - firstX - (maxRowsL - 1) * pitch
+      //   選択肢② = 選択肢①の右隣（x += pitch）
+      //   選択肢①の数字（MB番号）= maxRowsL
+      //   選択肢ci の数字 = maxRowsL - ci
+      //   列が増えるほど人間視点で右（x増加）へ展開
+      const maxMB = p.maxMB;
+      const backChoice1x = outer.x2 - firstX - (maxRowsL - 1) * pitch; // 選択肢①のx（左端）
+      const backRightLimit = outer.x2 - firstX - skipMB * pitch;        // 右端使用禁止境界
+
+      let qi = 0, colIndex = 0;
+      const colPositions = [];
+      while (qi < remainQ) {
+        // 各列の選択肢①のx（左端）: 列が増えるほど右へ
+        const colBaseX = backChoice1x + colIndex * (colWidth + columnGap);
+        // 右端MBのx = colBaseX + colWidth
+        // 右端使用禁止境界を超えないかチェック
+        if (colBaseX + colWidth + MB_LONG/2 + PAD > backRightLimit) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        for (let r = 0; r < qPerCol && qi < remainQ; r++, qi++) {
+          const cy = ansStartY + r * tmInterval;
+          collectTM(cy);
+          frameMinY = Math.min(frameMinY, cy);
+          frameMaxY = Math.max(frameMaxY, cy);
+          // 問題番号ラベル: 選択肢①MBの左側（表面と同じ）
+          api.setFill(255, 0, 255);
+          api.text(colBaseX - MB_LONG/2 - QLABEL_OFFSET, cy, `${frontQ + qi + 1}`, FS_QLABEL, 'right', "'Noto Sans JP', sans-serif");
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            // 左端が選択肢①（maxRowsL番MB）、右へ行くほど番号減少
+            // MB内数字は表面と同様に選択肢番号（1,2,3…）
+            const cx = colBaseX + ci * pitch;
+            drawMB(cx, cy, true);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        colPositions.push({
+          x1: colBaseX - MB_LONG/2,
+          y1: frameMinY - MB_SHORT/2,
+          x2: colBaseX + colWidth + MB_LONG/2,
+          y2: frameMaxY + MB_SHORT/2,
+        });
+        colIndex++;
+      }
+      colPositions.forEach(f => drawFrame(f.x1, f.y1, f.x2, f.y2));
+      drawAllTMs();
+    }
+
+  } else {
+    // =============================================
+    // LANDSCAPE Layout（横型）
+    // =============================================
+    const mbBase        = outer.y2 - firstX;
+    const ansStartY     = mbBase - (maxRowsL - 1) * pitch;
+    const maxRowsPerCol = maxRowsL - skipMB;
+
+    if (!isBack) {
+      // ---- 表面 ----
+      const examDigits = state.examDigits;
+      for (let di = 0; di < examDigits; di++) collectTM(enStart + di * tmInterval);
+      const enEndXcoord = enStart + (examDigits-1) * tmInterval;
+      const enEndYcoord = ansStartY + 9 * pitch;
+      drawFrame(enStart - MB_SHORT/2, ansStartY - MB_LONG/2,
+                enEndXcoord + MB_SHORT/2, enEndYcoord + MB_LONG/2);
+      for (let di = 0; di < examDigits; di++) {
+        const cx = enStart + di * tmInterval;
+        for (let ri = 0; ri <= 9; ri++) {
+          drawMB(cx, ansStartY + ri * pitch, false);
+          drawMBText(cx, ansStartY + ri * pitch, ri.toString());
+        }
+      }
+
+      const ansStart = enEndXcoord + sectionGap;
+      const colWidth  = (state.choiceCount - 1) * tmInterval;
+      const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+
+      let qi = 0, colIndex = 0;
+      while (qi < state.questionCount) {
+        const colBaseX = ansStart + colIndex * (colWidth + columnGap);
+        // 列の右端MB全体が収まるかチェック
+        if (colBaseX + colWidth + MB_SHORT / 2 > maxXmm) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        const frameMinX = colBaseX - MB_SHORT/2;
+        const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
+        const qThisCol  = Math.min(maxRowsPerCol, state.questionCount - qi);
+        for (let r = 0; r < qThisCol; r++, qi++) {
+          const cy = ansStartY + r * pitch;
+          frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
+          frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
+          drawQLabel(colBaseX, cy, `${qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * tmInterval;
+            collectTM(cx);
+            drawMB(cx, cy, false);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
+        colIndex++;
+      }
+      drawAllTMs();
+
+    } else {
+      // ---- 裏面（横型）----
+      // TM配置辺が上辺（制御型: TM上端y = MB中心y + tmS×1.5）
+      // MB/ansStartYは表面と同じy座標系
+      // 受験番号欄なし
+
+      const frontQ = calcFrontQLandscape();
+      const remainQ = state.questionCount - frontQ;
+
+      if (remainQ <= 0) {
+        // 表面で全問収まる → 外枠のみ
+        api.setStroke(255, 0, 255, LW_OUTER);
+        api.strokeRect(outer.x1, outer.y1, outer.x2 - outer.x1, outer.y2 - outer.y1);
+        return;
+      }
+
+      // 裏面解答欄（受験番号欄なし、enStartから直接解答欄）
+      const ansStart  = enStart;
+      const colWidth  = (state.choiceCount - 1) * tmInterval;
+      const maxXmm    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+
+      let qi = 0, colIndex = 0;
+      while (qi < remainQ) {
+        const colBaseX = ansStart + colIndex * (colWidth + columnGap);
+        // 列の右端MB全体が収まるかチェック
+        if (colBaseX + colWidth + MB_SHORT / 2 > maxXmm) break;
+        let frameMinY = Infinity, frameMaxY = -Infinity;
+        const frameMinX = colBaseX - MB_SHORT/2;
+        const frameMaxX = colBaseX + (state.choiceCount-1)*tmInterval + MB_SHORT/2;
+        const qThisCol  = Math.min(maxRowsPerCol, remainQ - qi);
+        for (let r = 0; r < qThisCol; r++, qi++) {
+          const cy = ansStartY + r * pitch;
+          frameMinY = Math.min(frameMinY, cy - MB_LONG/2);
+          frameMaxY = Math.max(frameMaxY, cy + MB_LONG/2);
+          drawQLabel(colBaseX, cy, `${frontQ + qi + 1}`);
+          for (let ci = 0; ci < state.choiceCount; ci++) {
+            const cx = colBaseX + ci * tmInterval;
+            collectTM(cx);
+            drawMB(cx, cy, false);
+            drawMBText(cx, cy, (ci + 1).toString());
+          }
+        }
+        drawFrame(frameMinX, frameMinY, frameMaxX, frameMaxY);
+        colIndex++;
+      }
+      drawAllTMs();
+    }
+  }
+}
+
+// =============================================
+// Init
+// =============================================
+initPitchTable();
+applyAutoSkipMB();
+applyAutoMaxRowsL();
+render();
+</script>
+</body>
+</html>
