@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>マークシート生成ツール — SR-3500</title>
+<title>マークシート生成ツール</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
@@ -359,7 +359,6 @@
 <header>
   <div class="logo">MarkSheet</div>
   <div class="title">マークシート生成ツール</div>
-  <!-- <div class="device-badge">SECONIK SR-3500</div> -->
   <button id="btn-theme" title="ダーク/ライト切替" style="
     margin-left:12px;background:transparent;border:1px solid var(--border);
     color:var(--text-mid);font-size:15px;width:32px;height:28px;border-radius:4px;
@@ -563,7 +562,7 @@ const PAPER = {
 // MB size (mm) — デフォルト値（stateで管理）
 const MB_LONG_DEFAULT = 4, MB_SHORT_DEFAULT = 2;
 const PAD = 2; // frame padding mm
-const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない（SR-3500仕様）
+const FIXED_SKIP_MB = 2; // 第1・第2MBは常に使用しない
 
 // =============================================
 // State
