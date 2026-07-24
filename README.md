@@ -1,6 +1,10 @@
 # MakeMarksheet
 
-A simple web-based OMR answer sheet generator with customizable layouts and PDF export.
+## Overview
+
+MakeMarksheet is an open-source web application for designing customizable OMR (Optical Mark Recognition) answer sheets.
+It generates printable PDF mark sheets with flexible question counts, answer choices, and layout settings.
+Designed to run entirely in the browser, it requires no installation or server.
 OMR（光学式マーク読取装置）対応マークシートを自動生成するWebアプリです。
 
 ## 概要
