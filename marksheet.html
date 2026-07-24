@@ -855,7 +855,9 @@ function checkWarnings(p, outer) {
   const columnGap  = state.orientation === 'portrait'
     ? pitch      * (state.columnGapMult + 1)
     : tmInterval * (state.columnGapMult + 1);
-  const enStart  = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+  const IS_03F_W   = state.pitchName === '0.3F';
+  const tmToMBCenterW = IS_03F_W ? (3.43 / 2) : tmS * 1.5;
+  const enStart  = MARGIN + tmToMBCenterW + MB_SHORT / 2;
   const choiceCount = state.choiceCount;
 
   let totalCapacity = 0;
@@ -891,23 +893,25 @@ function checkWarnings(p, outer) {
       totalCapacity += qPerColB * backCols;
     }
   } else {
-    // 横型表面
+    // 横型表面: calcFrontQLandscapeと同じ判定条件
     const colWidth   = (choiceCount - 1) * tmInterval;
     const enEndX     = enStart + (state.examDigits - 1) * tmInterval;
     const ansStart   = state.hasExamNum ? enEndX + sectionGap : enStart;
     const maxXmm     = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
     const qPerCol    = maxRowsL - skipMB;
     let frontCols = 0;
+    // 描画側と同じ条件: colBaseX + colWidth + MB_SHORT/2 <= maxXmm
     while (ansStart + frontCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmm) frontCols++;
-    totalCapacity += qPerCol * frontCols;
+    totalCapacity += qPerCol * Math.max(frontCols, 1);
 
-    // 横型裏面
+    // 横型裏面: backSkipMBを使用、ansStartはenStartから
     if (state.hasBack) {
       const ansStartB  = enStart;
       const maxXmmB    = outer.x2 - MARGIN - tmS * 1.5 - MB_SHORT / 2;
+      const qPerColB   = maxRowsL - state.backSkipMB;
       let backCols = 0;
       while (ansStartB + backCols * (colWidth + columnGap) + colWidth + MB_SHORT / 2 <= maxXmmB) backCols++;
-      totalCapacity += qPerCol * backCols;
+      totalCapacity += qPerColB * Math.max(backCols, 1);
     }
   }
 
@@ -1121,7 +1125,13 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   const maxRowsL = state.maxRowsL;
 
   const MARGIN = 9;
-  const enStart = MARGIN + tmS * 1.5 + MB_SHORT / 2;
+  const IS_03F = state.pitchName === '0.3F';
+  const START_STOP_SPAN = 3.43;
+  const HALF_SPAN = START_STOP_SPAN / 2; // 1.715mm
+  // 0.3F: スタートTM TOPからMB中心までの距離 = HALF_SPAN
+  // 通常: TM上端からMB中心までの距離 = tmS × 1.5
+  const tmToMBCenter = IS_03F ? HALF_SPAN : tmS * 1.5;
+  const enStart = MARGIN + tmToMBCenter + MB_SHORT / 2;
   // gapMult=0: インターバルなし（隣接、中心間距離=pitch/tmInterval×1）
   // gapMult=N: MB N個分の空き（中心間距離=pitch/tmInterval×(N+1)）
   const sectionGap = tmInterval * (state.sectionGapMult + 1);
@@ -1206,26 +1216,50 @@ function drawLayout(api, p, paper, isPortrait, isBack=false) {
   function drawAllTMs() {
     api.setFill(0, 0, 0);
     const sorted = [...tmAlongPositions].sort((a,b)=>a-b);
+    // 0.3F: スタート/ストップTMのペア構造
+    // スタートTM TOP → ストップTM BOTTOM = 3.43mm固定
+    // MB中心 = スタートTM TOP + 3.43/2 = スタートTM TOP + 1.715mm
+    // → スタートTM TOP = MB中心 - 1.715
+    // → ストップTM 上端 = MB中心 + 1.715 - tmS
+    const IS_03F = state.pitchName === '0.3F';
+    const START_STOP_SPAN = 3.43;         // スタートTM TOP〜ストップTM BOTTOM (mm)
+    const HALF_SPAN = START_STOP_SPAN / 2; // = 1.715mm
+
     sorted.forEach(ac => {
       if (isPortrait) {
-        // 縦型: along=下↓
-        // TM配置辺: 表面=人間視点で左辺(outer.x1)、裏面=人間視点で右辺(outer.x2)
-        // 制御型: TM上端 = MB中心 - tmS×1.5
-        // 直下型: TM上端 = MB中心 - tmS/2
-        const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
         const tx = isBack
-          ? outer.x2 - tmPos - tmL   // 裏面: 人間視点で右辺基準
-          : outer.x1 + tmPos;         // 表面: 人間視点で左辺基準
-        api.rect(tx, ac - tmOffset, tmL, tmS);
+          ? outer.x2 - tmPos - tmL
+          : outer.x1 + tmPos;
+
+        if (IS_03F) {
+          // 0.3F縦型: スタートTM + ストップTMのペア
+          const startTop = ac - HALF_SPAN;            // スタートTM上端y
+          const stopTop  = ac + HALF_SPAN - tmS;      // ストップTM上端y
+          api.rect(tx, startTop, tmL, tmS);            // スタートTM
+          api.rect(tx, stopTop,  tmL, tmS);            // ストップTM
+        } else {
+          // 通常
+          const tmOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+          api.rect(tx, ac - tmOffset, tmL, tmS);
+        }
       } else {
-        // 横型: along=右→
-        // TM along方向x（制御型/直下型）: 表面・裏面共通
-        const txOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
-        const tx =  !isBack ? ac - txOffset: ac + txOffset - tmS ;
-        // TM perp方向y: 表面・裏面共通
-        // 下辺基準 outer.y2 - tmPos - tmL
+        // 横型: along=右→、TMはx方向に並ぶ
         const ty = outer.y2 - tmPos - tmL;
-        api.rect(tx, ty, tmS, tmL);
+
+        if (IS_03F) {
+          // 0.3F横型: スタートTM + ストップTMのペア（along方向=x方向）
+          // 縦型のyをxに読み替え
+          // スタートTM 左端x = MB中心x - HALF_SPAN
+          // ストップTM 左端x = MB中心x + HALF_SPAN - tmS
+          const startLeft = ac - HALF_SPAN;
+          const stopLeft  = ac + HALF_SPAN - tmS;
+          api.rect(startLeft, ty, tmS, tmL);            // スタートTM
+          api.rect(stopLeft,  ty, tmS, tmL);            // ストップTM
+        } else {
+          const txOffset = state.tmType === 'control' ? tmS * 1.5 : tmS / 2;
+          const tx = !isBack ? ac - txOffset : ac + txOffset - tmS;
+          api.rect(tx, ty, tmS, tmL);
+        }
       }
     });
   }
