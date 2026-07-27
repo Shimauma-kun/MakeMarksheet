@@ -15,7 +15,7 @@
 | スタートタイミングマーク | スタートTM | 0.3F専用。対となるTMのうち上側（along方向の先頭側）のTM。 |
 | ストップタイミングマーク | ストップTM | 0.3F専用。対となるTMのうち下側（along方向の末尾側）のTM。 |
 | マークボックス | MB | 受験者が鉛筆でマークする楕円形の枠。各TMに対応して配置される。 |
-| TM間隔 | tmInterval | TMが並ぶ方向（along方向）のTM中心間距離（mm）。最小値4.23mm。0.3Fはスタート→次スタートのTOP間距離。 |
+| TM間隔 | tmInterval | TMが並ぶ方向（along方向）のTM中心間距離（mm）。0.3Fはスタート→次スタートのTOP間距離。 |
 | MB間隔 | pitch | MBが並ぶ方向（perp方向）のMB中心間距離（mm）。ピッチマスターで定義。 |
 | along方向 | along | TMが並ぶ方向。縦型＝下↓（y増加）、横型＝右→（x増加）。 |
 | perp方向 | perp | along方向と直交する方向。縦型＝右→（x増加）、横型＝上↑（y減少）。 |
@@ -23,13 +23,13 @@
 | 物理MB番号 | - | スキャナー基準のMB番号。TM配置辺（基準辺）に最も近いMBが第1MB。 |
 | 論理問題番号 | - | 受験者が読む問題の順番。シートの上側または左側から問1となる。 |
 | MBインターバル | skipMB | 表面でMBを何個ぶん空けてから開始するか。縦型・横型ともに有効。 |
-| 裏面のMBインターバル | backSkipMB | 縦型裏面でMBを何個ぶん空けてから開始するか。 |
+| 裏面のMBインターバル | backSkipMB | 縦型裏面・横型裏面でMBを何個ぶん空けてから開始するか。 |
 
 ---
 
 ## 2. 座標系
 
-- 原点はA4外枠の**左上隅**（outer.x1=0, outer.y1=0）
+- 原点は外枠の**左上隅**（outer.x1=0, outer.y1=0）
 - **Web座標系**を採用：右方向がx増加、**下方向がy増加**
 
 ---
@@ -104,7 +104,7 @@
 |---|---|---|
 | 個数/MB | 2（スタートTM + ストップTM） | 2（スタートTM + ストップTM） |
 | スタートTM TOP → ストップTM BOTTOM | 3.43mm固定 | 3.43mm固定 |
-| MB中心 | スタートTM TOP + 1.715mm | スタートTM TOP + 1.715mm（along方向） |
+| MB中心 | スタートTM TOP + 1.715mm | スタートTM LEFT + 1.715mm（along方向） |
 | TM間隔の基準 | スタートTM TOP → 次スタートTM TOP | スタートTM LEFT → 次スタートTM LEFT |
 
 ### 5.2 MB（マークボックス）
@@ -183,7 +183,8 @@ enStart（開始側MB中心） = 9 + 1.715 + MB_SHORT / 2
 |---|---|---|
 | 縦型表面 | perp方向（列の右端MB中心）の上限 | `perpMax = outer.x1 + firstX + (maxRowsL-1) × pitch` |
 | 縦型裏面 | perp方向（列の左端MB中心）の起点 | `backChoice1x = outer.x2 - firstX - (maxRowsL-1-backSkipMB) × pitch` |
-| 横型 | 1列あたりの最大行数 | `maxRowsPerCol = maxRowsL - skipMB` |
+| 横型表面 | 1列あたりの最大行数 | `maxRowsPerCol = maxRowsL - skipMB` |
+| 横型裏面 | 1列あたりの最大行数 | `maxRowsPerCol = maxRowsL - backSkipMB` |
 
 ---
 
@@ -295,14 +296,14 @@ ansStart = enStart（受験番号欄なし固定）
 **縦型:**
 ```
 qPerCol = floor((maxYmm - ansStartY) / tmInterval) + 1  （座標ベース）
-cols = maxRowsLの範囲内に収まる列数
+cols = perpMax範囲内に収まる列数
 frontQ = min(qPerCol × cols, questionCount)
 ```
 
 **横型:**
 ```
 qPerCol = maxRowsL - skipMB
-cols = 右端制限内に収まる列数
+cols = 右端制限内に収まる列数（colBaseX + colWidth + MB_SHORT/2 ≤ maxXmm）
 frontQ = min(qPerCol × cols, questionCount)
 ```
 
@@ -315,7 +316,7 @@ frontQ = min(qPerCol × cols, questionCount)
 | 縦型表面 | 第1MBから開始（perp方向） | 第(N+1)MBから開始 |
 | 縦型裏面 | backSkipMB=0: 最大範囲を使用 | backSkipMB=N: 右側N個ぶん縮める |
 | 横型表面 | maxRowsL行全使用 | (maxRowsL-N)行使用（下側スキップ） |
-| 横型裏面 | maxRowsL行全使用 | (maxRowsL-N)行使用 |
+| 横型裏面 | maxRowsL行全使用 | (maxRowsL-backSkipMB)行使用 |
 
 ---
 
@@ -375,7 +376,8 @@ frontQ = min(qPerCol × cols, questionCount)
 
 | 条件 | 警告内容 |
 |---|---|
-| tmInterval < 4.23mm | TM間隔が最小値(4.23mm)未満です |
+| 制御型 かつ tmInterval < 4.23mm | TM間隔が最小値(4.23mm)未満です |
+| 直下型 かつ tmInterval < 2.21mm | TM間隔が最小値(2.21mm)未満です |
 | 横型・受験番号欄ありで数字9行が外枠外 | 受験番号欄の数字9行が外枠外にはみ出します |
 | 表面＋裏面の総収容数 < 問題数 | マークがはみ出ています |
 
@@ -388,7 +390,7 @@ frontQ = min(qPerCol × cols, questionCount)
   裏面: qPerColB(座標ベース) × 列数(backChoice1x起点)
 
 横型:
-  表面: (maxRowsL - skipMB) × 列数(右端制限: colBaseX + colWidth + MB_SHORT/2 <= maxXmm)
+  表面: (maxRowsL - skipMB) × 列数(colBaseX + colWidth + MB_SHORT/2 ≤ maxXmm)
   裏面: (maxRowsL - backSkipMB) × 列数(同上)
 ```
 
@@ -407,7 +409,7 @@ frontQ = min(qPerCol × cols, questionCount)
 | 裏面 | hasBack | なし | なし / あり |
 | 表示面 | side | 表面 | 裏面ありのとき表示 |
 | ピッチ | pitchName | 0.25 | ピッチマスター参照 |
-| TM間隔 (mm) | tmInterval | 4.23 | 最小値4.23mm |
+| TM間隔 (mm) | tmInterval | 4.23 | 制御型最小値4.23mm、直下型最小値2.21mm |
 | 受験番号欄 | hasExamNum | あり | あり / なし |
 | 桁数 | examDigits | 5 | 受験番号欄ありのとき表示 |
 | 問題数 | questionCount | 50 | |
