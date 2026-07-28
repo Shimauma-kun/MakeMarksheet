@@ -151,7 +151,9 @@ document.getElementById('sel-pitch').addEventListener('change', e => {
 // ① ダーク/ライトモード切替
 (function() {
   const btn = document.getElementById('btn-theme');
-  let isLight = false;
+  let isLight = true;
+  document.body.classList.add('light-mode');
+  btn.textContent = '☀️';
   btn.addEventListener('click', () => {
     isLight = !isLight;
     document.body.classList.toggle('light-mode', isLight);
