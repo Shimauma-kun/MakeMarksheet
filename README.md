@@ -8,6 +8,7 @@ Designed to run entirely in the browser, it requires no installation or server.
 
 ## 概要
 
+OMR（光学式マーク読取装置）対応マークシートを自動生成するWebアプリです。
 OMR センサーに対応したマークシートを、ブラウザ上で設定・プレビューし、PDF として出力できます。単一HTMLファイルで完結しており、サーバー不要で動作します。
 
 ## 特徴
@@ -25,7 +26,7 @@ OMR センサーに対応したマークシートを、ブラウザ上で設定�
 
 ## 使い方
 
-1. `MakeMarksheet.html` をブラウザで開く（サーバー不要）
+1. `index.html` をブラウザで開く（サーバー不要）
 2. 左サイドバーで各パラメータを設定（値を変更するたびにプレビューが自動更新）
 3. プレビューで配置を確認
 4. **「⬇ PDF出力」** ボタンでPDF出力
@@ -34,7 +35,9 @@ OMR センサーに対応したマークシートを、ブラウザ上で設定�
 
 ```
 MakeMarksheet/
-├── MakeMarksheet.html      # メインアプリ（単一ファイル完結）
+├── index.html          # メインHTML
+├── MakeMarksheet.css   # スタイルシート
+├── MakeMarksheet.js    # アプリケーションロジック
 ├── README.md           # このファイル
 ├── marksheet_spec.md   # 設計仕様書
 └── .gitignore
