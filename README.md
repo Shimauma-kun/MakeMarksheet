@@ -1,4 +1,4 @@
-# [MakeMarksheet](https://github.com/Shimauma-kun/MakeMarksheet.git)
+# [MakeMarksheet](https://shimauma-kun.github.io/MakeMarksheet/)
 
 ## Overview
 
