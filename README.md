@@ -39,8 +39,6 @@ MakeMarksheet/
 ├── index.html                           # メインHTML
 ├── MakeMarksheet.css                    # スタイルシート
 ├── MakeMarksheet.js                     # アプリケーションロジック
-├── tools/
-│   └── _検証用script_check_scale.jsx   # Illustrator用TM/MB検証スクリプト
 ├── README.md                            # このファイル
 ├── marksheet_spec.md                    # 設計仕様書
 └── .gitignore
@@ -159,26 +157,3 @@ CDN 経由で読み込むため、インターネット接続が必要です。
 - Chrome / Edge 最新版
 - Firefox 最新版
 
----
-
-## 検証ツール
-
-### `tools/_検証用script_check_scale.jsx`
-
-出力したPDFをIllustrator上で開いた後、またはIllustrator上で手動修正を加えた後に、TMとMBの位置関係に齟齬がないかチェックするためのExtendScriptです。
-
-**使い方:**
-
-1. Illustratorでマークシートのファイルを開く
-2. 用紙サイズの枠（外枠）を付ける
-3. 外枠とTMのみを選択する
-4. `ファイル > スクリプト > その他のスクリプト...` から本スクリプトを選択して実行
-
-**主なチェック内容:**
-
-- TM・MBのサイズ検証
-- TM・MBの位置関係（制御型・直下型・0.3F対応）
-- 外枠がアートボードの中央に配置されているかの確認
-- 対応するMBのないTMの検出
-- 第一マーク読み取り範囲内の異物検出
-- テキストエリアの色チェック
