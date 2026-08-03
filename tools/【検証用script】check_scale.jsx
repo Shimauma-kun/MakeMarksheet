@@ -11,9 +11,6 @@ var TateYokoFlg=0;//0が縦
 var ID_size_height=1
 var ID_size_width=3.5
 
-//★★ここから可変★★
-//（default値）
-
 //許容範囲の初期値
 var Tolerance = 0.001 //誤差の許容範囲(mm)
 var Tolerance_waku_posi = 0.001   //アートボードと外枠の位置のズレの許容範囲
@@ -43,6 +40,16 @@ var flg_kagi =0
 // カギ型以外のMB数
 var kagi_other_MB_num = 0
 
+//TMチェック分
+var sitei_size_a,sitei_size_b; //TM: a：短辺、b：長辺
+var size_tate,size_yoko;
+var TM_position=-2;
+var facomFlg=0;//1がfacom型
+var facomTmKankaku=3.43;
+var TMkankaku=4.23;
+var const_kyori = "間隔",const_size = "サイズ",const_position = "位置";
+var const_OK = "【ＯＫ】",const_NG = "【ＮＧ】";
+
 //アートボードのセンター取得
 app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;   //ドキュメント単位での座標
 var abRect = doc.artboards[doc.artboards.getActiveArtboardIndex()].artboardRect
@@ -53,7 +60,7 @@ app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 // app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
 
 //ダイアログ設定
-var dialog = new Window("dialog","スケールチェック",[100,100,630,760],{closeButton:true,resizable:true}); // -> [^FootNote1]
+var dialog = new Window("dialog","スケールチェック",[100,100,630,850],{closeButton:true,resizable:true}); // -> [^FootNote1]
 
 dialog.panelHyouri = dialog.add('panel', {x:20, y:20, width:190, height:110}, "", {borderStyle:"inset"});
 dialog.panelHyouri.add("statictext",{x:5, y:5, width:150, height:20},"【おもて／うらを選択】");
@@ -104,11 +111,29 @@ dialog.paneKyoyoHani.txt_mbsize=dialog.paneKyoyoHani.add('edittext',{x:200, y:65
 dialog.paneKyoyoHani.add("statictext",{x:20, y:95, width:180, height:20},"外枠位置誤差許容範囲(mm):");
 dialog.paneKyoyoHani.txt_wakuposi=dialog.paneKyoyoHani.add('edittext',{x:200, y:95, width:60, height:20},Tolerance_waku_posi);    
 
-dialog.markkan_chuui=dialog.add("statictext",{x:20, y:500, width:400, height:70},"※マーク間は、ＴＭで挟まれたＭＢのみ正とします。\r\n※マーク間は、「余分なＴＭチェック」は行いません。");
-dialog.facom_chuui=dialog.add("statictext",{x:20, y:500, width:400, height:70},"※FACOMは、「余分なＴＭチェック」は行いません。\r\n※FACOMは、IDサイズを0.5*5.08とします。");
+dialog.markkan_chuui=dialog.add("statictext",{x:20, y:600, width:400, height:70},"※マーク間は、ＴＭで挟まれたＭＢのみ正とします。\r\n※マーク間は、「余分なＴＭチェック」は行いません。");
+dialog.facom_chuui=dialog.add("statictext",{x:20, y:600, width:400, height:70},"※FACOMは、「余分なＴＭチェック」は行いません。\r\n※FACOMは、IDサイズを0.5*5.08とします。");
 
-dialog.bt_ok = dialog.add('button',{x:270, y:600, width:100, height:25},'OK');
-dialog.bt_cancel = dialog.add('button',{x:380, y:600, width:100, height:25},'キャンセル');
+dialog.panelTMDetail = dialog.add('panel', {x:20, y:520, width:490, height:100}, "", {borderStyle:"inset"});
+dialog.panelTMDetail.enable = dialog.panelTMDetail.add('checkbox',{x:5, y:5, width:300, height:20},'【ＴＭのサイズ／間隔／位置も詳細チェックする】');
+
+dialog.panelTMDetail.panelSize = dialog.panelTMDetail.add('panel', {x:20, y:28, width:450, height:60}, "", {borderStyle:"inset"});
+dialog.panelTMDetail.panelSize.add("statictext",{x:5, y:5, width:150, height:20},"《ＴＭのサイズ、間隔最小値を設定(mm)》");
+dialog.panelTMDetail.panelSize.tanpen_lbl = dialog.panelTMDetail.panelSize.add("statictext",{x:20, y:25, width:60, height:20},"短辺:");
+dialog.panelTMDetail.panelSize.tanpen = dialog.panelTMDetail.panelSize.add('edittext',{x:70, y:25, width:50, height:20},"0.89");
+dialog.panelTMDetail.panelSize.chohen_lbl = dialog.panelTMDetail.panelSize.add("statictext",{x:130, y:25, width:60, height:20},"長辺:");
+dialog.panelTMDetail.panelSize.chohen = dialog.panelTMDetail.panelSize.add('edittext',{x:180, y:25, width:50, height:20},"5.9");
+dialog.panelTMDetail.panelSize.kankaku_lbl = dialog.panelTMDetail.panelSize.add("statictext",{x:240, y:25, width:60, height:20},"間隔:");
+dialog.panelTMDetail.panelSize.kankaku = dialog.panelTMDetail.panelSize.add('edittext',{x:290, y:25, width:50, height:20},"4.23");
+
+dialog.panelTMDetail.enable.onClick = function(){
+    dialog.panelTMDetail.panelSize.enabled = dialog.panelTMDetail.enable.value;
+}
+dialog.panelTMDetail.panelSize.enabled = false;
+
+dialog.bt_ok = dialog.add('button',{x:270, y:700, width:100, height:25},'OK');
+dialog.bt_cancel = dialog.add('button',{x:380, y:700, width:100, height:25},'キャンセル');
+
 
 dialog.panelMBform.enabled = true;
 dialog.paneKyoyoHani.txt_mbsize.enabled = true;
@@ -234,7 +259,6 @@ function Main(para){
         // TMサイズが既定のサイズより大きい場合の注意喚起
         var msg_TMsizecheck = funTMSizeChk(sel_objs); 
 
-        // alert(MB_Control_add)
         //TMソート処理
         sortByPosition(sel_objs);
 
@@ -256,16 +280,11 @@ function Main(para){
         path_objs = activeDocument.pathItems;
 
         //ai上のMBオブジェクトのグループを作成
-        // (flg_kagi==0)?funMakeMB_obj():funMakeMB_obj_kagi()
         if(flg_kagi_other) funMakeMB_obj()
         if(flg_kagi)       funMakeMB_obj_kagi()
 
         err_MB_cnt_ALL=0
         
-        //※※比較※※
-        // sel_objs[sotowaku_jun].selected=false
-        // sel_objs = documents[0].selection
-
         funMainComparison()
 
         //※※selectしたobjectの位置をarr_SampleMB_Groupと比較※※
@@ -275,14 +294,14 @@ function Main(para){
         else{
             var msg=""
             if(err_MB_cnt_ALL>0){
-                msg = msg+"【ＮＧ】スケールチェックＮＧです。\r\n"
+                msg = msg+"[スケールチェック]：【ＮＧ】です。\r\n"
             }
             else{
-                msg = msg+"【ＯＫ】スケールチェックＯＫです。\r\n"
+                msg = msg+"[スケールチェック]：【ＯＫ】です。\r\n"
             }
             if(MB_Control!=2 && MB_Control!=3){
                 if(!funNotNeedTM()){
-                    msg = msg+"【注意】余分なＴＭがあります。\r\n"
+                    msg = msg+"注意：余分なＴＭがあります。\r\n"
                 }
             }
 
@@ -295,7 +314,12 @@ function Main(para){
                 msg = msg+"\r\n\r\n"+txtareachk_msg
             }
             
-            msg = msg + "\r\n" + "【チェックオブジェクト数】"+ (chk_MB_cnt_ALL) + "（うちスキュー & ＩＤ：" + ID_Skew_cnt + "）"
+            msg = msg + "チェックオブジェクト数："+ (chk_MB_cnt_ALL) + "（うちスキュー & ＩＤ：" + ID_Skew_cnt + "）"
+
+            //TMサイズ＆間隔チェック
+            if(para.panelTMDetail.enable.value){
+                msg = msg + "\r\n" + funCheckTMDetail(para)
+            }
 
             //errメッセージ出力
             alert (msg)
@@ -337,7 +361,7 @@ function funTMSizeChk(sel_objs){
         }
     }
     if(TM < TM_tanpen){
-        return("【注意】TMサイズが" + TM + "mm以上です。(" + TM_tanpen +"mm)\r\n　　   ＴＭ同士の距離の確保に十分注意してください。")
+        return("注意：TMサイズが" + TM + "mm以上です。(" + TM_tanpen +"mm)\r\n　　   ＴＭ同士の距離の確保に十分注意してください。")
 	}
 	else{
 		return("")
@@ -366,7 +390,7 @@ function funTxtAreaColorChk(){
 		}
 	}
 	if(flg){
-		return("【注意】塗り有りのテキストエリアがあります。")
+		return("注意：塗り有りのテキストエリアがあります。")
 	}
 	else{
 		return("")
@@ -374,12 +398,6 @@ function funTxtAreaColorChk(){
 }
 
 function sortByPosition(r){
-    // r は PageItem の配列
-    // r の各要素が横長に並んでいる場合、左から順になるようにソートする。
-    // （左端の位置が同じ場合は上から順とする。）
-    // 縦長に並んでいる場合は、上から順になるようにソートする。
-    // （上端の位置が同じ場合は左から順とする。）
-    // アートボード上での重なり順は変更されない。
     var hs = [];
     var vs = [];
     for(var i = 0, iEnd = r.length; i < iEnd; i++){
@@ -509,7 +527,6 @@ function funMakeMB_obj(){
             if(funChkIDColor(path_objs[i])){
                 ID_Skew_cnt++
                 chk_MB_cnt_ALL++
-                // alert("ここ")
             }
             else{
                 chk_MB_cnt_ALL++
@@ -628,7 +645,7 @@ function funCheckSotowakuPosition(){
     
 //基準となるMBのグループを作成
 function funMakeSampleMB_Group(){
-    var TM_top,TM2_top,TM2_left,TM_left,TM_width,TM_height
+    var TM_top,TM2_top,TM_left,TM2_left,TM_width,TM_height
 
     var j=0
 
@@ -645,8 +662,6 @@ function funMakeSampleMB_Group(){
     }
 
     for (i = 0; i<len; i++) {//TM数分
-
-// alert(i+","+sel_objs[i].name+","+sel_objs[i+1].name)
 
         if(funChange_mm(sel_objs[i].width)>7){
             chk_TM_cnt_ALL[i]=99
@@ -890,21 +905,36 @@ function funChkIDSize_h(p_h_size){
 //////////////画面制御系
 //ピッチの選択による画面制御
 function funChange_panelPitch() {
+    facomFlg=0;//ピッチ切替のたびにリセット（0.3F以外を選んだ場合はFACOM扱いにしない）
     if(dialog.panelPitch.a.value==true){
         dialog.panelControl.enabled = true;
         dialog.panelControl.chokka.value = true;
         dialog.facom_chuui.visible = false;        
+        dialog.panelTMDetail.panelSize.tanpen.text=1.27
+        dialog.panelTMDetail.panelSize.chohen.text=3.81
+    }
+    else if(dialog.panelPitch.d.value==true){
+        dialog.panelTMDetail.panelSize.chohen.text=7
+    }
+    else if(dialog.panelPitch.e.value==true){
+        dialog.panelTMDetail.panelSize.tanpen.text=0.89
+        dialog.panelTMDetail.panelSize.chohen.text=3.81
     }
     else if(dialog.panelPitch.f.value==true){
         dialog.panelControl.enabled = false;
         dialog.panelControl.markkan.value = true;
         dialog.markkan_chuui.visible = false;        
-        dialog.facom_chuui.visible = true;        
+        dialog.facom_chuui.visible = true;
+        dialog.panelTMDetail.panelSize.tanpen.text=0.5
+        dialog.panelTMDetail.panelSize.chohen.text=5.08
+        facomFlg=1;
     }
     else {
         dialog.panelControl.enabled = true;
         dialog.panelControl.seigyo.value = true;
         dialog.facom_chuui.visible = false;        
+        dialog.panelTMDetail.panelSize.tanpen.text=0.89
+        dialog.panelTMDetail.panelSize.chohen.text=5.9
     }
 }
 
@@ -917,37 +947,41 @@ function funStrage_para(para)
     MB_size_tanpen = para.panelMBSize.tate.text;
     
     //ピッチを格納
-    if(para.panelPitch.a.value==true){
+    if(para.panelPitch.a.value==true){  //1/6ピッチ
 		pitch = 4.233
         MB_first_x_position=11.43
         MB_max=48
+        TM_position=5.085
     }
-    else if(para.panelPitch.b.value==true){
+    else if(para.panelPitch.b.value==true){ //0.2
 		pitch = 5.08
         MB_first_x_position=11.75
         MB_max=40
+        TM_position=-2
     }
-    else if(para.panelPitch.c.value==true){
+    else if(para.panelPitch.c.value==true){ //0.25
 		pitch = 6.35
         MB_first_x_position=6.35
         MB_max=33
+        TM_position=-2
     }
-    else if(para.panelPitch.d.value==true){
+    else if(para.panelPitch.d.value==true){ //0.3
 		pitch = 7.62
         MB_first_x_position=14.50
         MB_max=27
+        TM_position=-2
     }
-    else if(para.panelPitch.e.value==true){
+    else if(para.panelPitch.e.value==true){ //0.2s
 		pitch = 5.08
         MB_first_x_position=12.7
         MB_max=40
+        TM_position=5.095
     }
-    else if(para.panelPitch.f.value==true){
+    else if(para.panelPitch.f.value==true){ //0.3F
 		pitch = 7.62
         MB_first_x_position=17.78
         MB_max=24
-        ID_size_height=0.5
-        ID_size_width=5.08
+        TM_position=10.16-(para.panelTMDetail.panelSize.chohen.text/2)
 
     }
     else{}
@@ -989,4 +1023,261 @@ function funStrage_para(para)
 
     Tolerance_waku_posi=para.paneKyoyoHani.txt_wakuposi.text
 
+}
+
+var actDoc = activeDocument
+
+//funCheckTMDetail：TMのサイズ・間隔・位置をチェックし、結果を「文字列」で返す。
+//                  （独自のダイアログ表示・テキストファイル出力は行わない。呼び出し元でMain()の結果メッセージに連結する）
+function funCheckTMDetail(para){
+
+    var objs_len=sel_objs.length; 
+    var str_size="",str_position="",str_kyori="";
+    var str_size_NG_cnt=0,str_position_NG_cnt=0,str_kyori_NG_cnt=0;
+    // var flg_omote_ura=0;
+    var TMobj_a=0,TMobj_b=0; //間隔をチェックする対象のTM
+    var array = new Array(objs_len);//配列初期化 １つめの要素は外枠
+
+    //指定されたTMのサイズを格納
+    funSetTMSize(para)
+
+    //配列への格納
+    //スクリプトは多次元配列がサポートされていないので見せかけの多次元配列作成
+    for (var i = 0; i < objs_len; i++) {
+        array[i] = ["", "","","","",""];
+    }
+    for (var i = 0; i < objs_len; i++) {//格納
+        //array[TM位置,topの値]
+        array[i][0]= i;
+
+        if(TateYokoFlg==0){
+            array[i][1] = sel_objs[i].top;
+            if(sel_objs[i].stroked){
+                array[i][4] =  (sel_objs[i].left+sel_objs[i].strokeWidth/2);
+            }
+            else{
+                array[i][4] =  sel_objs[i].left
+            }
+        }
+        else{
+            array[i][1] = sel_objs[i].left
+            if(sel_objs[i].stroked){
+                array[i][4] = sel_objs[i].top-sel_objs[i].height-sel_objs[i].strokeWidth/2
+            }
+            else{
+                array[i][4] =  sel_objs[i].top-sel_objs[i].height;
+            }
+        }
+        array[i][2] = sel_objs[i].height;
+        array[i][3] = sel_objs[i].width;
+        array[i][5] = sel_objs[i].left+sel_objs[i].width;
+    }
+    array = sortDataTM(array,objs_len,TateYokoFlg);//配列のソート（topの値をキーに、昇順）
+    if(array[0][2] <= 10 || array[0][3] <= 10)
+    {
+        return "\r\n【ＴＭ詳細チェック】\r\n【エラー】ＴＭ詳細チェック：選択オブジェクトの並び順から外枠を特定できませんでした。\r\n"
+    }
+
+    if(TateYokoFlg==0){
+        size_tate = sitei_size_a;
+        size_yoko = sitei_size_b;
+    }
+    else{
+        size_tate = sitei_size_b;
+        size_yoko = sitei_size_a;
+    }
+
+    for (var i=1; i<objs_len; i++)
+    {
+        if(i<objs_len-1){
+            //TM間隔チェック
+            TMobj_a=array[i][1];//現在アクティブなＴＭ
+            if(facomFlg==0){
+                TMobj_b=array[i+1][1];//現在アクティブなＴＭの隣のＴＭ
+            }
+            else{
+                if(!(i%2 == 0)){//比較元のTMが奇数番目の場合、マークを挟むTMの間隔をチェック
+                    str_kyori=str_kyori+f_facom_checkTM(TMobj_a,array[i+1][1],i)
+                }
+                TMobj_b=0
+                if (!(i+2>=objs_len)){
+                    TMobj_b=array[i+2][1];//現在アクティブなＴＭの２つ隣のＴＭ
+                }
+            }
+            if(!(TMobj_b==0)){
+                if(TateYokoFlg==0){
+                    var kyori =Math.round(((TMobj_b-TMobj_a)/mm)*1000*-1)
+                }
+                else{
+                    var kyori =Math.round(((TMobj_b-TMobj_a)/mm)*1000)
+                }
+                kyori=kyori/1000;
+                if(kyori<TMkankaku){
+                    str_kyori=str_kyori + "第"+i+"TMと第"+(i+parseInt([facomFlg==0?1:2]))+const_kyori+const_HA+TMkankaku+"以下です,　　⇒（"+kyori+"mm）"+"\n\r";
+                    str_kyori_NG_cnt++;
+                }
+            }
+        }
+        //サイズチェック
+        if(Math.round((array[i][2]/mm)*1000)/1000 != size_tate || Math.round((array[i][3]/mm)*1000)/1000 != size_yoko){
+           str_size=str_size + "第"+i+const_size+"は"+const_NG +"　　"+Math.round((array[i][2]/mm)*1000)/1000 +"mm×"+Math.round((array[i][3]/mm)*1000)/1000 +"mm\r\n";
+           str_size_NG_cnt++;
+        }
+
+        //位置チェック
+        if(flg_panelHyouri==0 || TateYokoFlg==1){
+            //おもての場合（横型は縦横問わずこちらの判定でOK）
+            if(Math.round(((array[i][4]-array[0][4])/mm)*1000)/1000 != TM_position){
+                str_position=str_position + "第"+i+const_position+"は"+const_NG+"　　"+((TM_position-Math.round(((array[i][4]-array[0][4])/mm)*1000)/1000))*-1+"mm\r\n";
+                str_position_NG_cnt++;
+            }
+        }
+        else{
+            //うらの場合（縦型のみ）
+            if(Math.round((((array[0][4]/mm+array[0][3]/mm)-(array[i][4]/mm+array[i][3]/mm)))*1000)/1000 != TM_position){
+                str_position=str_position + "第"+i+const_position+"は"+const_NG+"　　"+((TM_position-Math.round((((array[0][4]/mm+array[0][3]/mm)-(array[i][4]/mm+array[i][3]/mm)))*1000)/1000))*-1+"mm\r\n";
+                str_position_NG_cnt++;
+            }
+        }
+
+    }
+
+    //ここまでの結果を1つのメッセージ文字列にまとめる（独自ダイアログ・テキストファイル出力はしない）
+    var msg_tm = "\r\n[ＴＭチェック]：\r\n"
+    msg_tm = msg_tm + "ＴＭ数は" + (sel_objs.length-1) + "個です。" + (sel_objs.length-1<4 ? "（4未満です）" : "") + "\r\n"
+
+    if(str_kyori_NG_cnt==0){
+        msg_tm = msg_tm + const_kyori+"は"+const_OK+"、　";
+    }
+    else{
+        msg_tm = msg_tm + const_kyori+"は"+const_NG+"、　";
+    }
+    if(str_size_NG_cnt==0){
+        msg_tm = msg_tm + const_size+"は"+const_OK+"、　";
+    }
+    else{
+        msg_tm = msg_tm + const_size+"は"+const_NG+"、　";
+    }
+    if(str_position_NG_cnt==0){
+        msg_tm = msg_tm + const_position+"は"+const_OK+"です。\r\n"+"\r\n";
+    }
+    else{
+        msg_tm = msg_tm + const_position+"は"+const_NG+"です。\r\n"+"\r\n";
+    }
+
+
+    /* ロックか非表示にされてるオブジェクトをサーチ */
+    var locked_obj_flg=false //ロックフラグ
+    var hidden_obj_flg=false //非表示フラグ
+    var str_ng_msg=""
+    for (var n=0; n<activeDocument.pageItems.length&&(locked_obj_flg==false||hidden_obj_flg==false); n++){//全部のオブジェクトを見るか、ロックor非表示のオブジェクトが見つかるまで回すよ
+        if (activeDocument.pageItems[n].locked == true&&locked_obj_flg!=true){
+            locked_obj_flg=true
+            if(str_ng_msg!=""){str_ng_msg=str_ng_msg+"・"}
+            str_ng_msg = str_ng_msg+"ロック"
+        }
+        if (activeDocument.pageItems[n].hidden == true&&hidden_obj_flg!=true){
+            hidden_obj_flg=true
+            if(str_ng_msg!=""){str_ng_msg=str_ng_msg+"・"}
+            str_ng_msg = str_ng_msg+"非表示"
+        }
+    }
+    if (str_ng_msg!=""){
+        msg_tm = msg_tm + "注意："+str_ng_msg+"オブジェクトがあります\r\n";
+    }
+    if(actDoc.layers.length > 1){
+        msg_tm = msg_tm + "注意：レイヤーが複数存在します\r\n";
+    }
+
+    /* 横or縦幅0mmのテキストオブジェクトをサーチ（併せて対象を選択状態にする） */
+    var errcnt=0;
+    for (var i=0; i<activeDocument.textFrames.length; i++) {
+        if(checkTxtTM(activeDocument.textFrames[i])==false){
+            if(errcnt==0){
+                activeDocument.selection = null
+            }
+            activeDocument.textFrames[i].hidden = false
+            activeDocument.textFrames[i].locked = false
+            activeDocument.textFrames[i].selected=true
+            errcnt++;
+            }
+    }
+    if(errcnt>0){
+        msg_tm = msg_tm + "注意：横幅が0mmのテキストオブジェクトがあります。\r\n";
+    }
+    
+    return msg_tm;
+}
+
+
+//★TMチェック統合分：以下ヘルパー関数群★
+function checkTxtTM(txtObj) {
+    if (txtObj.width<=0 || txtObj.height<=0) {
+        return false;
+        }
+    return true;
+}
+
+//topの値をキーに、昇順でのソート処理
+function sortDataTM(p_array,pobjs_len,p_TateYokoFlg)
+{
+	for (var i=0; i<pobjs_len-1; i++)
+	{
+		for (var j=i+1; j<pobjs_len; j++)
+		{
+			if(p_TateYokoFlg==0){
+				if (p_array[j][1] > p_array[i][1])//top値の比較
+				{
+                    cngDataTM(p_array,j,i);
+				}
+			}
+			else{
+				if (p_array[j][1] < p_array[i][1])//leftの値の比較
+				{
+                    cngDataTM(p_array,j,i);
+				}
+			}
+		}
+	}
+	return p_array;
+}
+function cngDataTM(p_array,j,i)
+{
+    var tmp = new Array(6);//配列初期化
+    for(var k=0; k<6; k++){
+        tmp[k] = p_array[j][k];//TM位置退避
+    }
+    for(var k=0; k<6; k++){
+        p_array[j][k] =  p_array[i][k];//TM位置入れ替え
+    }
+    for(var k=0; k<6; k++){
+        p_array[i][k] = tmp[k];//退避したTM位置格納
+    }
+}
+
+
+//facom型のペアTMの間隔チェック（マークを挟むTMの間隔をチェック）
+function f_facom_checkTM(p_TM_a,p_TM_b, p_i)
+{
+    var kyori=0
+    var str=""
+    if(TateYokoFlg==0){
+        kyori =Math.round(((p_TM_b-p_TM_a)/mm)*1000*-1)
+    }
+    else{
+        kyori =Math.round(((p_TM_b-p_TM_a)/mm)*1000)
+    }
+    kyori=kyori/1000;
+    if(!(kyori==(facomTmKankaku-sitei_size_a))){
+        str = "ペアのTM間隔err_第"+p_i+"TMと第"+(p_i+1)+const_kyori+"は"+facomTmKankaku+"以外です,　　⇒（"+(kyori+sitei_size_a)+"mm）"+"\n\r";
+    }
+    return str
+}
+
+function funSetTMSize(para){
+    //指定されたTMのサイズと間隔を格納
+    var ps = para.panelTMDetail.panelSize
+    sitei_size_a = ps.tanpen.text;
+    sitei_size_b = ps.chohen.text;
+    TMkankaku=ps.kankaku.text;
 }

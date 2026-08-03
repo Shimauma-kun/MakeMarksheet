@@ -10,6 +10,7 @@ Designed to run entirely in the browser, it requires no installation or server.
 
 OMR（光学式マーク読取装置）対応マークシートを自動生成するWebアプリです。
 OMR センサーに対応したマークシートを、ブラウザ上で設定・プレビューし、PDF として出力できます。単一HTMLファイルで完結しており、サーバー不要で動作します。
+※あくまでも作成補助ツールです。実際に使用する前にOMR実機での読み取りテストをお願いします。
 
 ## 特徴
 
